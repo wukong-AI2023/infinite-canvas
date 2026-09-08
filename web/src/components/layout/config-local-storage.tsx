@@ -4,7 +4,9 @@ import { Database, HardDrive, Layers3, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { canvasThemes } from "@/lib/canvas-theme";
 import { readLocalStorageUsage, type LocalStorageUsage } from "@/services/local-storage-usage";
+import { useThemeStore } from "@/stores/use-theme-store";
 
 const storeLabelKeys: Record<string, string> = {
     app_state: "appState",
@@ -18,6 +20,7 @@ const storeLabelKeys: Record<string, string> = {
 
 export function ConfigLocalStorage({ active }: { active: boolean }) {
     const { t } = useTranslation();
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [usage, setUsage] = useState<LocalStorageUsage | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -43,7 +46,7 @@ export function ConfigLocalStorage({ active }: { active: boolean }) {
 
     return (
         <div className="space-y-3">
-            <section className="rounded-lg border border-stone-200 p-4 dark:border-stone-800">
+            <section className="rounded-lg border p-4" style={{ borderColor: theme.toolbar.border }}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <div className="flex items-center gap-2 text-sm font-semibold">
@@ -77,17 +80,17 @@ export function ConfigLocalStorage({ active }: { active: boolean }) {
                 ) : null}
             </section>
             {usage?.databases.map((database) => (
-                <section key={database.name} className="overflow-hidden rounded-lg border border-stone-200 dark:border-stone-800">
-                    <div className="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-3 dark:border-stone-800">
+                <section key={database.name} className="overflow-hidden rounded-lg border" style={{ borderColor: theme.toolbar.border }}>
+                    <div className="flex items-center justify-between gap-3 border-b px-4 py-3" style={{ borderColor: theme.toolbar.border }}>
                         <div className="min-w-0">
                             <div className="truncate text-sm font-semibold">{t("config.localStorage.mainDatabase")}</div>
                             <div className="mt-0.5 truncate font-mono text-[11px] text-stone-500">{database.name} · v{database.version}</div>
                         </div>
                         <div className="shrink-0 text-sm font-medium tabular-nums">{formatStorageBytes(database.bytes)}</div>
                     </div>
-                    <div className="divide-y divide-stone-200 dark:divide-stone-800">
-                        {database.stores.map((store) => (
-                            <div key={store.name} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-4 px-4 py-3 text-sm">
+                    <div>
+                        {database.stores.map((store, index) => (
+                            <div key={store.name} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-4 px-4 py-3 text-sm" style={index ? { borderTop: `1px solid ${theme.toolbar.border}` } : undefined}>
                                 <div className="min-w-0">
                                     <div className="truncate font-medium">{storeLabel(store.name, t)}</div>
                                     <div className="mt-0.5 truncate font-mono text-[11px] text-stone-500">{store.name}</div>

@@ -4,12 +4,15 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useCopyText } from "@/hooks/use-copy-text";
+import { canvasThemes } from "@/lib/canvas-theme";
 import { testLocalProxy } from "@/services/api/local-proxy";
 import { DEFAULT_LOCAL_PROXY_URL, LOCAL_PROXY_PACKAGE, normalizeLocalProxyUrl, useConfigStore } from "@/stores/use-config-store";
+import { useThemeStore } from "@/stores/use-theme-store";
 
 export function ConfigLocalProxy() {
     const { message } = App.useApp();
     const { t } = useTranslation();
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const copyText = useCopyText();
     const [testing, setTesting] = useState(false);
     const config = useConfigStore((state) => state.config);
@@ -29,7 +32,7 @@ export function ConfigLocalProxy() {
 
     return (
         <Form layout="vertical" requiredMark={false}>
-            <section className="rounded-lg border border-stone-200 p-3 dark:border-stone-800">
+            <section className="rounded-lg border p-3" style={{ borderColor: theme.toolbar.border }}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <div className="flex items-center gap-2 text-sm font-semibold">

@@ -2,11 +2,14 @@ import { App, Button, Drawer, Input, Space, Switch } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { canvasThemes } from "@/lib/canvas-theme";
 import type { PromptSource } from "@/services/api/prompt-source-presets";
+import { useThemeStore } from "@/stores/use-theme-store";
 
 export function PromptSourceEditorDrawer({ open, source, onSave, onClose }: { open: boolean; source: PromptSource | null; onSave: (source: PromptSource) => void; onClose: () => void }) {
     const { message } = App.useApp();
     const { t } = useTranslation();
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [draft, setDraft] = useState<PromptSource | null>(source);
 
     useEffect(() => {
@@ -56,7 +59,7 @@ export function PromptSourceEditorDrawer({ open, source, onSave, onClose }: { op
                     <span className="mb-1.5 block text-sm font-medium">{t("config.promptSources.editor.homepage")}</span>
                     <Input value={draft.homepage} onChange={(event) => patch({ homepage: event.target.value })} placeholder="https://example.com" />
                 </label>
-                <div className="flex items-center justify-between border-y border-stone-200 py-3 dark:border-stone-800">
+                <div className="flex items-center justify-between border-y py-3" style={{ borderColor: theme.toolbar.border }}>
                     <span className="text-sm font-medium">{t("config.promptSources.editor.enabled")}</span>
                     <Switch checked={draft.enabled} onChange={(enabled) => patch({ enabled })} />
                 </div>

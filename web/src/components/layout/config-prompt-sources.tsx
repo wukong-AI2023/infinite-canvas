@@ -6,8 +6,10 @@ import { useTranslation } from "react-i18next";
 
 import { PromptSourceEditorDrawer } from "./prompt-source-editor-drawer";
 import { PromptSourceContentModal } from "./prompt-source-content-modal";
+import { canvasThemes } from "@/lib/canvas-theme";
 import { fetchPromptSourceStatuses, refreshAllSources, refreshSource } from "@/services/api/prompts";
 import { PROMPT_SOURCE_INTERVALS, usePromptSourceStore } from "@/stores/use-prompt-source-store";
+import { useThemeStore } from "@/stores/use-theme-store";
 import type { PromptSource } from "@/services/api/prompt-source-presets";
 
 const STATUS_QUERY_KEY = ["prompt-source-statuses"];
@@ -15,6 +17,7 @@ const STATUS_QUERY_KEY = ["prompt-source-statuses"];
 export function ConfigPromptSources() {
     const { message, modal } = App.useApp();
     const { i18n, t } = useTranslation();
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const queryClient = useQueryClient();
     const sources = usePromptSourceStore((state) => state.sources);
     const schedule = usePromptSourceStore((state) => state.schedule);
@@ -100,7 +103,7 @@ export function ConfigPromptSources() {
                 {sources.map((source) => {
                     const status = statusQuery.data?.[source.id];
                     return (
-                        <div key={source.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-stone-200 px-4 py-3 dark:border-stone-800">
+                        <div key={source.id} className="flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3" style={{ borderColor: theme.toolbar.border }}>
                             <Switch size="small" checked={source.enabled} onChange={(checked) => { toggleSource(source.id, checked); void invalidatePrompts(); }} />
                             <div className="min-w-[220px] flex-1">
                                 <div className="flex min-w-0 items-center gap-2">
@@ -131,7 +134,7 @@ export function ConfigPromptSources() {
                 })}
             </div>
 
-            <section className="mt-5 rounded-lg border border-stone-200 p-4 dark:border-stone-800">
+            <section className="mt-5 rounded-lg border p-4" style={{ borderColor: theme.toolbar.border }}>
                 <div className="mb-3 text-sm font-semibold">{t("config.promptSources.schedule")}</div>
                 <div className="flex flex-wrap items-center gap-3">
                     <div className="flex items-center gap-2">

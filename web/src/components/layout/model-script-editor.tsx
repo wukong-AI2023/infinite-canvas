@@ -6,8 +6,10 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useCopyText } from "@/hooks/use-copy-text";
+import { canvasThemes } from "@/lib/canvas-theme";
 import { getPluginAuthoringPrompt, getPluginReturn, getPluginTemplates, getPluginVariables } from "@/services/api/model-plugin";
 import type { ModelCapability } from "@/stores/use-config-store";
+import { useThemeStore } from "@/stores/use-theme-store";
 
 function isDarkMode() {
     return typeof document !== "undefined" && document.documentElement.classList.contains("dark");
@@ -23,8 +25,9 @@ function StepHeading({ index, title }: { index: number; title: string }) {
 }
 
 function StepBlock({ index, title, children }: { index: number; title: string; children: ReactNode }) {
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
     return (
-        <section className="border-b border-stone-200/70 px-5 py-4 dark:border-stone-800/70">
+        <section className="border-b px-5 py-4" style={{ borderColor: theme.toolbar.border }}>
             <StepHeading index={index} title={title} />
             {children}
         </section>
@@ -34,6 +37,7 @@ function StepBlock({ index, title, children }: { index: number; title: string; c
 export function ModelScriptEditor({ open, capability, modelName, value, onSave, onClose }: { open: boolean; capability: ModelCapability; modelName: string; value: string; onSave: (script: string) => void; onClose: () => void }) {
     const { t } = useTranslation();
     const copyText = useCopyText();
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [draft, setDraft] = useState(value);
     useEffect(() => {
         if (open) setDraft(value);
@@ -61,7 +65,7 @@ export function ModelScriptEditor({ open, capability, modelName, value, onSave, 
             style={{ top: 0, margin: 0, paddingBottom: 0, maxWidth: "100vw" }}
         >
             <div className="flex h-dvh max-h-dvh flex-col overflow-hidden">
-                <header className="shrink-0 border-b border-stone-200 px-6 py-3 pr-12 dark:border-stone-800">
+                <header className="shrink-0 border-b px-6 py-3 pr-12" style={{ borderColor: theme.toolbar.border }}>
                     <div className="text-base font-semibold">
                         {t("config.scriptEditor.title", { capability: capabilityLabel })}
                         {modelName ? ` · ${modelName}` : ""}
@@ -69,8 +73,8 @@ export function ModelScriptEditor({ open, capability, modelName, value, onSave, 
                     <div className="mt-1 text-xs text-stone-500">{t("config.scriptEditor.description")}</div>
                 </header>
                 <div className="flex min-h-0 flex-1 overflow-hidden">
-                    <aside className="flex h-full w-[420px] shrink-0 flex-col border-r border-stone-200 bg-stone-50/80 dark:border-stone-800 dark:bg-stone-900/40">
-                        <div className="flex shrink-0 gap-2 border-b border-stone-200/70 px-5 py-3 text-xs text-stone-500 dark:border-stone-800/70 dark:text-stone-400">
+                    <aside className="flex h-full w-[420px] shrink-0 flex-col border-r bg-stone-50/80 dark:bg-stone-900/40" style={{ borderColor: theme.toolbar.border }}>
+                        <div className="flex shrink-0 gap-2 border-b px-5 py-3 text-xs text-stone-500 dark:text-stone-400" style={{ borderColor: theme.toolbar.border }}>
                             <span>1. {t("config.scriptEditor.stepRule")}</span>
                             <span>→</span>
                             <span>2. {t("config.scriptEditor.stepAi")}</span>
@@ -131,8 +135,8 @@ export function ModelScriptEditor({ open, capability, modelName, value, onSave, 
                             </section>
                         </div>
                     </aside>
-                    <div className="flex h-full min-w-0 flex-1 flex-col bg-white dark:bg-stone-950">
-                        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-stone-200 px-4 py-2.5 dark:border-stone-800">
+                        <div className="flex h-full min-w-0 flex-1 flex-col bg-white dark:bg-stone-950">
+                        <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2.5" style={{ borderColor: theme.toolbar.border }}>
                             <div>
                                 <div className="text-sm font-medium text-stone-800 dark:text-stone-100">{t("config.scriptEditor.editorTitle")}</div>
                                 <div className="text-xs text-stone-500">{t("config.scriptEditor.editorHint")}</div>
@@ -153,7 +157,7 @@ export function ModelScriptEditor({ open, capability, modelName, value, onSave, 
                         </div>
                     </div>
                 </div>
-                <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-stone-200 px-6 py-3 dark:border-stone-800">
+                <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-6 py-3" style={{ borderColor: theme.toolbar.border }}>
                     <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs text-stone-400">{t("config.scriptEditor.startFromTemplate")}</span>
                         {templates.map((template) => (
