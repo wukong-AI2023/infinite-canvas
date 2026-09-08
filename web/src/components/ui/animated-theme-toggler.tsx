@@ -3,6 +3,7 @@ import { Moon, Sun } from "lucide-react";
 import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 
+import { isDarkTheme, type CanvasColorTheme } from "@/lib/canvas-theme";
 import { cn } from "@/lib/utils";
 
 export type TransitionVariant = "circle" | "square" | "triangle" | "diamond" | "hexagon" | "rectangle" | "star";
@@ -12,9 +13,9 @@ interface AnimatedThemeTogglerProps extends React.ComponentPropsWithoutRef<"butt
     variant?: TransitionVariant;
     /** When true, the transition expands from the viewport center instead of the button center. */
     fromCenter?: boolean;
-    theme?: "light" | "dark";
-    targetTheme?: "light" | "dark";
-    onThemeChange?: (theme: "light" | "dark") => void;
+    theme?: CanvasColorTheme;
+    targetTheme?: CanvasColorTheme;
+    onThemeChange?: (theme: CanvasColorTheme) => void;
 }
 
 function polygonCollapsed(cx: number, cy: number, vertexCount: number): string {
@@ -90,7 +91,7 @@ export const AnimatedThemeToggler = ({ children, className, duration = 400, vari
 
     useEffect(() => {
         if (theme) {
-            setIsDark(theme === "dark");
+            setIsDark(isDarkTheme(theme));
             return;
         }
 
@@ -131,10 +132,12 @@ export const AnimatedThemeToggler = ({ children, className, duration = 400, vari
 
         const applyTheme = () => {
             const nextTheme = targetTheme ?? (isDark ? "light" : "dark");
-            if (nextTheme === (isDark ? "dark" : "light")) return;
-            setIsDark(nextTheme === "dark");
-            document.documentElement.classList.toggle("dark", nextTheme === "dark");
-            document.documentElement.style.colorScheme = nextTheme;
+            if (theme ? nextTheme === theme : nextTheme === (isDark ? "dark" : "light")) return;
+            const nextIsDark = isDarkTheme(nextTheme);
+            setIsDark(nextIsDark);
+            document.documentElement.classList.toggle("dark", nextIsDark);
+            document.documentElement.dataset.theme = nextTheme;
+            document.documentElement.style.colorScheme = nextIsDark ? "dark" : "light";
             onThemeChange?.(nextTheme);
         };
 
@@ -183,7 +186,7 @@ export const AnimatedThemeToggler = ({ children, className, duration = 400, vari
                 );
             });
         }
-    }, [shape, fromCenter, duration, isDark, targetTheme, onThemeChange]);
+    }, [shape, fromCenter, duration, isDark, theme, targetTheme, onThemeChange]);
 
     return (
         <button type="button" ref={buttonRef} onClick={toggleTheme} className={cn(className)} {...props}>

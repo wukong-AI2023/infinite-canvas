@@ -1,6 +1,8 @@
 import type { ThemeConfig } from "antd";
 import { theme as antdTheme } from "antd";
 
+import { isDarkTheme, type CanvasColorTheme } from "@/lib/canvas-theme";
+
 const neutral = {
     light: {
         primary: "#171717",
@@ -26,14 +28,27 @@ const neutral = {
         tableSelectedBg: "rgba(255, 255, 255, 0.08)",
         tableSelectedHoverBg: "rgba(255, 255, 255, 0.12)",
     },
+    "dark-gray": {
+        primary: "#fafafa",
+        primaryHover: "#ffffff",
+        primaryText: "#171717",
+        elevatedBg: "#262626",
+        itemHoverBg: "rgba(250, 250, 250, 0.08)",
+        itemSelectedBg: "rgba(250, 250, 250, 0.12)",
+        itemSelectedHoverBg: "rgba(250, 250, 250, 0.16)",
+        itemText: "#fafafa",
+        tableSelectedBg: "rgba(255, 255, 255, 0.08)",
+        tableSelectedHoverBg: "rgba(255, 255, 255, 0.12)",
+    },
 };
 
-export function getAntThemeConfig(dark: boolean): ThemeConfig {
-    const color = dark ? neutral.dark : neutral.light;
+export function getAntThemeConfig(theme: CanvasColorTheme): ThemeConfig {
+    const dark = isDarkTheme(theme);
+    const color = theme === "dark-gray" ? neutral["dark-gray"] : dark ? neutral.dark : neutral.light;
 
     return {
         algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-        cssVar: { key: dark ? "infinite-canvas-dark" : "infinite-canvas-light" },
+        cssVar: { key: theme === "light" ? "infinite-canvas-light" : theme === "dark-gray" ? "infinite-canvas-dark-gray" : "infinite-canvas-dark" },
         token: {
             colorPrimary: color.primary,
             colorInfo: color.primary,
@@ -63,10 +78,10 @@ export function getAntThemeConfig(dark: boolean): ThemeConfig {
                 itemHoverBg: color.itemHoverBg,
                 itemSelectedBg: color.itemSelectedBg,
                 itemSelectedColor: color.itemText,
-                darkPopupBg: neutral.dark.elevatedBg,
-                darkItemHoverBg: neutral.dark.itemHoverBg,
-                darkItemSelectedBg: neutral.dark.itemSelectedBg,
-                darkItemSelectedColor: neutral.dark.itemText,
+                darkPopupBg: dark ? color.elevatedBg : neutral.dark.elevatedBg,
+                darkItemHoverBg: dark ? color.itemHoverBg : neutral.dark.itemHoverBg,
+                darkItemSelectedBg: dark ? color.itemSelectedBg : neutral.dark.itemSelectedBg,
+                darkItemSelectedColor: dark ? color.itemText : neutral.dark.itemText,
             },
             Select: {
                 optionActiveBg: color.itemHoverBg,

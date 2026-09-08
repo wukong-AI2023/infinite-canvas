@@ -14,7 +14,6 @@ import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-refer
 import { useTranslation } from "react-i18next";
 
 type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
-const selectionBlue = "#2f80ff";
 
 type CanvasNodeProps = {
     data: CanvasNodeData;
@@ -142,7 +141,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     // Transparent nodes such as SVGs blend into the canvas while retaining outlines for selected or related states.
     const transparentBg = Boolean(definition?.transparentBackground);
     const isActive = isConnectionTarget || isSelected || isFocusRelated;
-    const imageBorderColor = isActive ? selectionBlue : isRelated ? theme.node.muted : "transparent";
+    const imageBorderColor = isActive ? theme.node.activeStroke : isRelated ? theme.node.muted : "transparent";
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const titleInputRef = useRef<HTMLInputElement>(null);
     const resizeRef = useRef({
@@ -355,84 +354,86 @@ export const CanvasNode = React.memo(function CanvasNode({
                 </div>
             )}
 
-            <div
-                className="relative h-full w-full overflow-visible rounded-3xl border-2"
-                style={{
-                    background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
-                    borderColor: isGroup ? (isGroupDropTarget || isActive ? selectionBlue : theme.node.stroke) : hasImageContent ? imageBorderColor : isActive ? selectionBlue : isRelated ? theme.node.muted : transparentBg ? "transparent" : theme.node.stroke,
-                    borderStyle: isGroup ? "dashed" : "solid",
-                    boxShadow: isGroupDropTarget ? `0 0 0 2px ${selectionBlue}66, inset 0 0 0 999px ${selectionBlue}10` : isActive ? `0 0 0 1px ${selectionBlue}55` : isRelated ? `0 0 0 1px ${theme.node.muted}55, 0 18px 48px rgba(0,0,0,.14)` : undefined,
-                }}
-                onMouseDown={(event) => {
-                    if (!referenceSelectionState) onMouseDown(event, data.id);
-                    else if (event.button === 0 && referenceSelectionState === "available") {
-                        event.stopPropagation();
-                        onSelectReference?.(data.id);
-                    }
-                }}
-                onDoubleClick={(event) => {
-                    if (referenceSelectionState) {
-                        event.stopPropagation();
-                        return;
-                    }
-                    if (definition?.onDoubleClick && pluginContext) {
-                        if (definition.onDoubleClick(pluginContext)) event.stopPropagation();
-                        return;
-                    }
-                    if (data.type === CanvasNodeType.Image && hasImageContent) {
-                        event.stopPropagation();
-                        onViewImage?.(data);
-                        return;
-                    }
-                    if (data.type !== CanvasNodeType.Text) return;
-                    event.stopPropagation();
-                    setIsEditingContent(true);
-                }}
-            >
+            <div className="relative h-full w-full">
                 <div
-                    className={`relative flex h-full w-full items-center justify-center rounded-[inherit] ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
-                    style={
-                        {
-                            background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
-                            pointerEvents: contentInteractive ? undefined : "none",
-                        } as React.CSSProperties
-                    }
+                    className={`relative h-full w-full rounded-3xl ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
+                    style={{
+                        background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
+                        boxShadow: isGroupDropTarget ? `0 0 0 2px ${theme.node.activeStroke}66, inset 0 0 0 999px ${theme.node.activeStroke}10` : isActive ? `0 0 0 1px ${theme.node.activeStroke}55` : isRelated ? `0 0 0 1px ${theme.node.muted}55, 0 18px 48px rgba(0,0,0,.14)` : undefined,
+                    }}
+                    onMouseDown={(event) => {
+                        if (!referenceSelectionState) onMouseDown(event, data.id);
+                        else if (event.button === 0 && referenceSelectionState === "available") {
+                            event.stopPropagation();
+                            onSelectReference?.(data.id);
+                        }
+                    }}
+                    onDoubleClick={(event) => {
+                        if (referenceSelectionState) {
+                            event.stopPropagation();
+                            return;
+                        }
+                        if (definition?.onDoubleClick && pluginContext) {
+                            if (definition.onDoubleClick(pluginContext)) event.stopPropagation();
+                            return;
+                        }
+                        if (data.type === CanvasNodeType.Image && hasImageContent) {
+                            event.stopPropagation();
+                            onViewImage?.(data);
+                            return;
+                        }
+                        if (data.type !== CanvasNodeType.Text) return;
+                        event.stopPropagation();
+                        setIsEditingContent(true);
+                    }}
                 >
-                    <NodeContent
-                        node={data}
-                        theme={theme}
-                        isEditingContent={isEditingContent}
-                        textareaRef={textareaRef}
-                        isBatchRoot={isBatchRoot}
-                        batchCount={batchCount}
-                        batchExpanded={batchExpanded}
-                        renderNodeContent={renderNodeContent}
-                        pluginContext={pluginContext}
-                        mentionReferences={mentionReferences}
-                        onContentChange={onContentChange}
-                        onStopEditing={() => setIsEditingContent(false)}
-                        onRetry={onRetry}
-                        onToggleBatch={() => onToggleBatch?.(data.id)}
-                        onSetBatchPrimary={(itemId) => onSetBatchPrimary?.(data.id, itemId)}
-                        onDuplicateBatchImage={(imageId) => onDuplicateBatchImage?.(data, imageId)}
-                        onDownloadBatchImage={(imageId) => onDownloadBatchImage?.(data, imageId)}
-                        onRetryBatchImage={(imageId) => onRetryBatchImage?.(data, imageId)}
-                        onDeleteBatchImage={(imageId) => onDeleteBatchImage?.(data.id, imageId)}
-                        onViewBatchImage={(imageId) => onViewImage?.(data, imageId)}
-                        groupChildCount={groupChildCount}
+                    <div
+                        className={`relative flex h-full w-full items-center justify-center rounded-3xl ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
+                        style={
+                            {
+                                background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
+                                pointerEvents: contentInteractive ? undefined : "none",
+                            } as React.CSSProperties
+                        }
+                    >
+                        <NodeContent
+                            node={data}
+                            theme={theme}
+                            isEditingContent={isEditingContent}
+                            textareaRef={textareaRef}
+                            isBatchRoot={isBatchRoot}
+                            batchCount={batchCount}
+                            batchExpanded={batchExpanded}
+                            renderNodeContent={renderNodeContent}
+                            pluginContext={pluginContext}
+                            mentionReferences={mentionReferences}
+                            onContentChange={onContentChange}
+                            onStopEditing={() => setIsEditingContent(false)}
+                            onRetry={onRetry}
+                            onToggleBatch={() => onToggleBatch?.(data.id)}
+                            onSetBatchPrimary={(itemId) => onSetBatchPrimary?.(data.id, itemId)}
+                            onDuplicateBatchImage={(imageId) => onDuplicateBatchImage?.(data, imageId)}
+                            onDownloadBatchImage={(imageId) => onDownloadBatchImage?.(data, imageId)}
+                            onRetryBatchImage={(imageId) => onRetryBatchImage?.(data, imageId)}
+                            onDeleteBatchImage={(imageId) => onDeleteBatchImage?.(data.id, imageId)}
+                            onViewBatchImage={(imageId) => onViewImage?.(data, imageId)}
+                            groupChildCount={groupChildCount}
+                        />
+                    </div>
+
+                    {showImageInfo && hasImageContent ? <ImageInfoBar node={data} /> : null}
+
+                    {referenceSelectionState && (referenceSelectionState !== "available" || hovered) ? (
+                        <div className="pointer-events-none absolute inset-0 z-[60] grid place-items-center rounded-[inherit]" style={{ background: `color-mix(in srgb, ${theme.canvas.background} ${referenceSelectionState === "target" ? 78 : referenceSelectionState === "disabled" ? 60 : 34}%, transparent)`, boxShadow: referenceSelectionState === "available" ? `inset 0 0 0 2px ${theme.node.activeStroke}` : undefined }}>
+                            {referenceSelectionState !== "disabled" ? <span className="rounded-lg px-3 py-2 text-sm font-medium shadow-sm" style={{ background: theme.toolbar.panel, color: theme.node.text }}>{t(referenceSelectionState === "target" ? "canvas.references.selecting" : "canvas.references.choose")}</span> : null}
+                        </div>
+                    ) : null}
+
+                    <div
+                        className={`pointer-events-none absolute inset-0 z-[65] rounded-[inherit] border-2 ${isGroup ? "border-dashed" : "border-solid"}`}
+                        style={{ borderColor: isGroup ? (isGroupDropTarget || isActive ? theme.node.activeStroke : theme.node.stroke) : hasImageContent ? imageBorderColor : isActive ? theme.node.activeStroke : isRelated ? theme.node.muted : transparentBg ? "transparent" : theme.node.stroke }}
                     />
                 </div>
-
-                {showImageInfo && hasImageContent ? <ImageInfoBar node={data} /> : null}
-
-                {!isGroup && !hasImageContent && !hasVideoContent && !hasAudioContent ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12" style={{ background: `linear-gradient(to top, ${theme.canvas.background}66, transparent)` }} /> : null}
-
-                {referenceSelectionState && (referenceSelectionState !== "available" || hovered) ? (
-                    <div className="pointer-events-none absolute inset-0 z-[60] grid place-items-center rounded-[inherit]" style={{ background: `color-mix(in srgb, ${theme.canvas.background} ${referenceSelectionState === "target" ? 78 : referenceSelectionState === "disabled" ? 60 : 34}%, transparent)`, boxShadow: referenceSelectionState === "available" ? `inset 0 0 0 2px ${selectionBlue}` : undefined }}>
-                        {referenceSelectionState !== "disabled" ? <span className="rounded-lg px-3 py-2 text-sm font-medium shadow-sm" style={{ background: theme.toolbar.panel, color: theme.node.text }}>{t(referenceSelectionState === "target" ? "canvas.references.selecting" : "canvas.references.choose")}</span> : null}
-                    </div>
-                ) : null}
-
                 {!referenceSelectionState ? <ResizeHandle corner="top-left" onMouseDown={handleResizeMouseDown} /> : null}
                 {!referenceSelectionState ? <ResizeHandle corner="top-right" onMouseDown={handleResizeMouseDown} /> : null}
                 {!referenceSelectionState ? <ResizeHandle corner="bottom-left" onMouseDown={handleResizeMouseDown} /> : null}
@@ -640,7 +641,7 @@ function ExpandedTextCard({ node, text, index, onSetPrimary }: { node: CanvasNod
                         {text.content}
                     </div>
                     <button type="button" className="absolute right-2.5 top-2.5 flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.text }} onClick={(event) => (event.stopPropagation(), onSetPrimary())}>
-                        <Star className="size-3.5" style={{ color: selectionBlue }} />
+                        <Star className="size-3.5" style={{ color: theme.node.activeStroke }} />
                         {t("canvas.node.setPrimaryText")}
                     </button>
                 </>
@@ -703,7 +704,7 @@ function VideoNodeContent({ node, theme }: NodeContentRendererProps) {
                 <span className="text-sm">{t("canvas.node.emptyVideo")}</span>
             </div>
         );
-    return <video src={node.metadata.content} controls className="h-full w-full rounded-[18px] bg-black object-contain" data-canvas-video={node.id} data-canvas-no-zoom />;
+    return <video src={node.metadata.content} controls className="h-full w-full bg-black object-cover" data-canvas-video={node.id} data-canvas-no-zoom />;
 }
 
 function AudioNodeContent({ node, theme }: NodeContentRendererProps) {
@@ -770,7 +771,7 @@ function ImageContent({
                         alt={node.title}
                         draggable={false}
                         onDragStart={(event) => event.preventDefault()}
-                        className={`pointer-events-none block h-full w-full select-none ${node.metadata?.freeResize ? "object-fill" : "object-contain"}`}
+                        className={`pointer-events-none block h-full w-full select-none ${node.metadata?.freeResize ? "object-fill" : "object-cover"}`}
                     />
                 ) : (
                     <ImageSlotStatus image={primaryImage} />
@@ -842,7 +843,7 @@ function ExpandedImageCard({ node, image, index, onView, onSetPrimary, onDuplica
                 onView();
             }}
         >
-            {image.content ? <img src={image.content} alt={node.title} draggable={false} className="pointer-events-none h-full w-full select-none object-contain" /> : <ImageSlotStatus image={image} />}
+            {image.content ? <img src={image.content} alt={node.title} draggable={false} className="pointer-events-none h-full w-full select-none object-cover" /> : <ImageSlotStatus image={image} />}
             {image.content ? (
                 <div className="absolute inset-x-2 top-2 flex items-center gap-1">
                     <button type="button" className="flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] font-medium shadow-[0_6px_18px_rgba(15,23,42,.16)] backdrop-blur-md transition hover:scale-[1.02]" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.activeText }} title={t("common.download")} onClick={(event) => (event.stopPropagation(), onDownload())}>
@@ -854,7 +855,7 @@ function ExpandedImageCard({ node, image, index, onView, onSetPrimary, onDuplica
                         <span className="truncate">{t("canvas.node.createCopy")}</span>
                     </button>
                     <button type="button" className="flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] font-medium shadow-[0_6px_18px_rgba(15,23,42,.16)] backdrop-blur-md transition hover:scale-[1.02]" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.activeText }} title={t("canvas.node.setPrimary")} onClick={(event) => (event.stopPropagation(), onSetPrimary())}>
-                        <Star className="size-3 shrink-0" style={{ color: selectionBlue }} />
+                        <Star className="size-3 shrink-0" style={{ color: theme.node.activeStroke }} />
                         <span className="truncate">{t("canvas.node.setPrimary")}</span>
                     </button>
                 </div>
@@ -916,7 +917,7 @@ function BatchFrame({ batchCount, batchExpanded, children }: { batchCount: numbe
                     {Array.from({ length: Math.min(batchCount - 1, 3) }).map((_, index) => (
                         <div
                             key={index}
-                            className="absolute rounded-[inherit] border shadow-[0_10px_24px_rgba(68,64,60,.12)] transition-all duration-300 group-hover/batch:translate-x-1"
+                            className="absolute rounded-3xl border shadow-[0_10px_24px_rgba(68,64,60,.12)] transition-all duration-300 group-hover/batch:translate-x-1"
                             style={{
                                 inset: 0,
                                 background: `linear-gradient(135deg, ${theme.node.panel}, ${theme.node.fill})`,
@@ -949,7 +950,7 @@ function ConnectionHandleDot({ side, visible, onMouseDown }: { side: "left" | "r
 
     return (
         <div
-            className={`absolute top-1/2 z-30 flex size-12 -translate-y-1/2 cursor-crosshair items-center justify-center transition-opacity duration-150 ${
+            className={`absolute top-1/2 z-[70] flex size-12 -translate-y-1/2 cursor-crosshair items-center justify-center transition-opacity duration-150 ${
                 side === "left" ? "-left-6" : "-right-6"
             } ${visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
             onMouseDown={onMouseDown}

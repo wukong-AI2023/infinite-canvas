@@ -9,9 +9,12 @@
         <script>
             try {
                 var s = JSON.parse(localStorage.getItem("infinite-canvas:theme_store") || "{}");
-                var t = s.state && s.state.theme === "light" ? "light" : "dark";
-                document.documentElement.classList.toggle("dark", t === "dark");
-                document.documentElement.style.colorScheme = t;
+                var t = s.state && s.state.theme;
+                if (t !== "light" && t !== "dark" && t !== "dark-gray") t = "dark";
+                var dark = t !== "light";
+                document.documentElement.classList.toggle("dark", dark);
+                document.documentElement.dataset.theme = t;
+                document.documentElement.style.colorScheme = dark ? "dark" : "light";
             } catch (e) {}
         </script>
     </head>

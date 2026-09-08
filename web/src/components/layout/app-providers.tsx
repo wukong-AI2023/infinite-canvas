@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { ClientRootInit } from "@/components/layout/client-root-init";
 import type { AppLocale } from "@/i18n";
 import { getAntThemeConfig } from "@/lib/app-theme";
+import { isDarkTheme } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 const queryClient = new QueryClient({
@@ -27,12 +28,13 @@ const queryClient = new QueryClient({
 export function AppProviders({ children }: { children: ReactNode }) {
     const { i18n, t } = useTranslation();
     const theme = useThemeStore((state) => state.theme);
-    const dark = theme === "dark";
+    const dark = isDarkTheme(theme);
     const locale = i18n.resolvedLanguage as AppLocale;
 
     useEffect(() => {
         document.documentElement.classList.toggle("dark", dark);
-        document.documentElement.style.colorScheme = theme;
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
     }, [dark, theme]);
 
     useEffect(() => {
@@ -43,7 +45,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
     }, [locale, t]);
 
     return (
-        <ConfigProvider locale={locale === "zh-CN" ? zhCN : enUS} theme={getAntThemeConfig(dark)}>
+        <ConfigProvider locale={locale === "zh-CN" ? zhCN : enUS} theme={getAntThemeConfig(theme)}>
             <ProConfigProvider dark={dark}>
                 <App>
                     <QueryClientProvider client={queryClient}>

@@ -117,6 +117,27 @@
     --sidebar-ring: oklch(0.556 0 0);
 }
 
+html[data-theme="dark-gray"] {
+    --color-stone-50: #fafafa;
+    --color-stone-100: #f5f5f5;
+    --color-stone-200: #e5e5e5;
+    --color-stone-300: #d4d4d4;
+    --color-stone-400: #a1a1a1;
+    --color-stone-500: #737373;
+    --color-stone-600: #525252;
+    --color-stone-700: #404040;
+    --color-stone-800: #262626;
+    --color-stone-900: #171717;
+    --color-stone-950: #0a0a0a;
+}
+
+html[data-theme="dark-gray"] .ai-title-aurora {
+    background: linear-gradient(90deg, #fafafa 0%, #fafafa 36%, #a1a1a1 54%, #fafafa 72%, #fafafa 100%);
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+}
+
 @layer base {
     * {
         @apply border-border outline-ring/50;
