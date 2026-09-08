@@ -57,10 +57,10 @@ export function ConnectionCreateOption({ theme, icon, title, description, onClic
             className="flex h-16 w-full cursor-pointer items-center gap-3 rounded-2xl px-3 text-left transition"
             style={{ color: theme.node.text }}
             onClick={onClick}
-            onMouseEnter={(event) => (event.currentTarget.style.background = theme.node.fill)}
+            onMouseEnter={(event) => (event.currentTarget.style.background = theme.toolbar.activeBg)}
             onMouseLeave={(event) => (event.currentTarget.style.background = "transparent")}
         >
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl" style={{ background: theme.node.fill, color: theme.node.muted }}>
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl" style={{ background: theme.toolbar.itemHover, color: theme.node.muted }}>
                 {icon}
             </span>
             <span className="min-w-0 flex-1">
