@@ -356,7 +356,7 @@ export const CanvasNode = React.memo(function CanvasNode({
 
             <div className="relative h-full w-full">
                 <div
-                    className={`relative h-full w-full rounded-3xl ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
+                    className={`relative h-full w-full rounded-[16px] ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
                     style={{
                         background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
                         boxShadow: isGroupDropTarget ? `0 0 0 2px ${theme.node.activeStroke}66, inset 0 0 0 999px ${theme.node.activeStroke}10` : isActive ? `0 0 0 1px ${theme.node.activeStroke}55` : isRelated ? `0 0 0 1px ${theme.node.muted}55, 0 18px 48px rgba(0,0,0,.14)` : undefined,
@@ -388,7 +388,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                     }}
                 >
                     <div
-                        className={`relative flex h-full w-full items-center justify-center rounded-3xl ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
+                        className={`relative flex h-full w-full items-center justify-center rounded-[16px] ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
                         style={
                             {
                                 background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
