@@ -64,8 +64,8 @@ export const canvasThemes = {
     },
     "dark-gray": {
         canvas: {
-            background: "#000000",
-            dot: "rgba(119,119,119,.20)",
+            background: "#0a0a0a",
+            dot: "#464646",
             line: "rgba(119,119,119,.14)",
             selectionStroke: "#7a7a7a",
             selectionFill: "rgba(255,255,255,.12)",

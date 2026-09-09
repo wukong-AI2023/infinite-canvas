@@ -3215,12 +3215,17 @@ function InfiniteCanvasPage() {
                             <rect width="100%" height="100%" fill={theme.canvas.selectionFill} stroke={theme.canvas.selectionStroke} strokeOpacity={0.55} strokeWidth={1 / viewport.k} strokeDasharray={`${6 / viewport.k} ${4 / viewport.k}`} />
                         </svg>
                     ) : null}
-                    {pendingConnectionCreate ? <ConnectionCreateMenu pending={pendingConnectionCreate} onCreate={(type) => createConnectedNode(type, pendingConnectionCreate)} onClose={cancelPendingConnectionCreate} /> : null}
+                    {pendingConnectionCreate ? <ConnectionCreateMenu pending={pendingConnectionCreate} scale={viewport.k} onCreate={(type) => createConnectedNode(type, pendingConnectionCreate)} onClose={cancelPendingConnectionCreate} /> : null}
                     {nodeCreatePosition ? (
                         <NodeCreateMenu
                             position={nodeCreatePosition}
+                            scale={viewport.k}
                             onCreate={(type) => {
                                 createNode(type, nodeCreatePosition);
+                                setNodeCreatePosition(null);
+                            }}
+                            onUpload={() => {
+                                handleUploadRequest();
                                 setNodeCreatePosition(null);
                             }}
                             onClose={() => setNodeCreatePosition(null)}
@@ -3269,12 +3274,6 @@ function InfiniteCanvasPage() {
                 ) : null}
 
                 <CanvasToolbar
-                    selectedCount={selectedNodeIds.size}
-                    canvasTool={canvasTool}
-                    canUndo={historyState.canUndo}
-                    canRedo={historyState.canRedo}
-                    backgroundMode={backgroundMode}
-                    showImageInfo={showImageInfo}
                     onAddImage={() => createNode(CanvasNodeType.Image)}
                     onAddVideo={() => createNode(CanvasNodeType.Video)}
                     onAddAudio={() => createNode(CanvasNodeType.Audio)}
@@ -3282,19 +3281,32 @@ function InfiniteCanvasPage() {
                     onAddConfig={() => createNode(CanvasNodeType.Config)}
                     onAddGroup={() => createNode(CanvasNodeType.Group)}
                     onAddExtensionNode={(type) => createNode(type)}
-                    onUndo={undoCanvas}
-                    onRedo={redoCanvas}
                     onUpload={() => handleUploadRequest()}
-                    onDelete={() => deleteNodes(new Set(selectedNodeIds))}
-                    onClear={() => setClearConfirmOpen(true)}
-                    onCanvasToolChange={setCanvasTool}
-                    onBackgroundModeChange={setBackgroundMode}
-                    onShowImageInfoChange={setShowImageInfo}
+                    onCreateNode={(type) => createNode(type)}
                 />
 
                 {isMiniMapOpen ? <Minimap nodes={nodes} viewport={viewport} viewportSize={size} onViewportChange={setViewport} /> : null}
 
-                <CanvasZoomControls scale={viewport.k} onScaleChange={setZoomScale} onReset={resetViewport} isMiniMapOpen={isMiniMapOpen} onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)} />
+                <CanvasZoomControls
+                    scale={viewport.k}
+                    onScaleChange={setZoomScale}
+                    onReset={resetViewport}
+                    isMiniMapOpen={isMiniMapOpen}
+                    onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)}
+                    canvasTool={canvasTool}
+                    canUndo={historyState.canUndo}
+                    canRedo={historyState.canRedo}
+                    selectedCount={selectedNodeIds.size}
+                    backgroundMode={backgroundMode}
+                    showImageInfo={showImageInfo}
+                    onCanvasToolChange={setCanvasTool}
+                    onUndo={undoCanvas}
+                    onRedo={redoCanvas}
+                    onDelete={() => deleteNodes(new Set(selectedNodeIds))}
+                    onClear={() => setClearConfirmOpen(true)}
+                    onBackgroundModeChange={setBackgroundMode}
+                    onShowImageInfoChange={setShowImageInfo}
+                />
 
                 {contextMenu ? (
                     <CanvasNodeContextMenu
