@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowUp, LoaderCircle, Maximize2, Square } from "lucide-react";
+import { ArrowUp, Maximize2, Square } from "lucide-react";
 import { Button, Modal, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 
@@ -74,7 +74,7 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
     return (
         <div
             data-canvas-no-zoom
-            className="relative flex h-[230px] w-full min-w-0 flex-col overflow-hidden rounded-[16px] border p-3 shadow-2xl backdrop-blur"
+            className="relative flex h-[258px] w-full min-w-0 flex-col overflow-hidden rounded-[16px] border p-3 shadow-2xl backdrop-blur"
             style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
@@ -140,14 +140,8 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
                         onClick={() => (isRunning ? onStop(node.id) : submit())}
                         aria-label={t(isRunning ? "canvas.promptPanel.stopGeneration" : "canvas.promptPanel.generate")}
                     >
-                        <span className="flex items-center gap-1.5">
-                            {isRunning ? (
-                                <>
-                                    <LoaderCircle className="size-4 animate-spin" />
-                                    <Square className="size-3.5 fill-current" />
-                                    <span className="text-xs font-medium">{t("canvas.promptPanel.stop")}</span>
-                                </>
-                            ) : (
+                        <span className="flex items-center justify-center">
+                            {isRunning ? <Square className="size-3.5 fill-current" /> : (
                                 <ArrowUp className="size-4" />
                             )}
                         </span>

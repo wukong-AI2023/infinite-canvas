@@ -29,7 +29,7 @@ export function ConnectionCreateMenu({
         <div
             className="absolute z-[120] w-[300px] rounded-[16px] border p-3 shadow-2xl backdrop-blur"
             data-connection-create-menu
-            style={{ left: pending.position.x, top: pending.position.y, transform: `scale(${0.9 / Math.max(scale, 0.05)})`, transformOrigin: "top left", background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+            style={{ left: pending.position.x, top: pending.position.y, transform: `scale(${0.9 / Math.max(scale, 0.25)})`, transformOrigin: "top left", background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
         >
@@ -94,9 +94,9 @@ export function NodeCreateMenu({ position, scale, onCreate, onUpload, onClose, o
     return (
         <div
             ref={menuRef}
-            className="pointer-events-auto absolute z-[120] max-h-[70vh] w-[238px] overflow-y-auto rounded-[16px] border p-3 shadow-2xl backdrop-blur thin-scrollbar"
+            className="pointer-events-auto absolute z-[120] max-h-[70vh] w-[253.333333px] overflow-y-auto rounded-[16px] border p-3 shadow-2xl backdrop-blur thin-scrollbar"
             data-canvas-no-zoom
-            style={{ left: position.x, top: position.y, transform: `scale(${0.9 / Math.max(scale, 0.05)})`, transformOrigin: "top left", background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+            style={{ left: position.x, top: position.y, transform: `scale(${0.9 / Math.max(scale, 0.25)})`, transformOrigin: "top left", background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
             onPointerDown={(event) => event.stopPropagation()}

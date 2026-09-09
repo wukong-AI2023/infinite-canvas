@@ -1,7 +1,7 @@
 import type { ThemeConfig } from "antd";
 import { theme as antdTheme } from "antd";
 
-import { isDarkTheme, type CanvasColorTheme } from "@/lib/canvas-theme";
+import { canvasThemes, isDarkTheme, type CanvasColorTheme } from "@/lib/canvas-theme";
 
 const neutral = {
     light: {
@@ -45,6 +45,7 @@ const neutral = {
 export function getAntThemeConfig(theme: CanvasColorTheme): ThemeConfig {
     const dark = isDarkTheme(theme);
     const color = theme === "dark-gray" ? neutral["dark-gray"] : dark ? neutral.dark : neutral.light;
+    const canvasTheme = canvasThemes[theme];
 
     return {
         algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
@@ -57,6 +58,8 @@ export function getAntThemeConfig(theme: CanvasColorTheme): ThemeConfig {
             colorLinkActive: color.primary,
             colorTextLightSolid: color.primaryText,
             colorBgElevated: color.elevatedBg,
+            colorBgSpotlight: theme === "dark-gray" ? "#2b2b2b" : canvasTheme.toolbar.panel,
+            boxShadowSecondary: "0 8px 24px rgba(0, 0, 0, 0.24)",
             controlItemBgHover: color.itemHoverBg,
             controlItemBgActive: color.itemSelectedBg,
             controlItemBgActiveHover: color.itemSelectedHoverBg,

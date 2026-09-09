@@ -11,8 +11,8 @@ type CanvasNodeSpec = {
 };
 
 export const NODE_DEFAULT_SIZE = {
-    [CanvasNodeType.Image]: { width: 340, height: 240, get title() { return i18n.t("canvas.nodeTypes.image"); } },
-    [CanvasNodeType.Text]: { width: 340, height: 240, get title() { return i18n.t("canvas.nodeTypes.text"); } },
+    [CanvasNodeType.Image]: { width: 236, height: 236, get title() { return i18n.t("canvas.nodeTypes.image"); } },
+    [CanvasNodeType.Text]: { width: 340, height: 236, get title() { return i18n.t("canvas.nodeTypes.text"); } },
     [CanvasNodeType.Config]: { width: 340, height: 240, get title() { return i18n.t("canvas.nodeTypes.config"); } },
     [CanvasNodeType.Video]: { width: 420, height: 236, get title() { return i18n.t("canvas.nodeTypes.video"); } },
     [CanvasNodeType.Audio]: { width: 340, height: 120, get title() { return i18n.t("canvas.nodeTypes.audio"); } },
@@ -21,11 +21,11 @@ export const NODE_DEFAULT_SIZE = {
 
 export const NODE_SPECS = {
     [CanvasNodeType.Image]: {
-        width: 340, height: 240, get title() { return NODE_DEFAULT_SIZE[CanvasNodeType.Image].title; },
-        metadata: { content: "", status: "idle" },
+        width: 236, height: 236, get title() { return NODE_DEFAULT_SIZE[CanvasNodeType.Image].title; },
+        metadata: { content: "", status: "idle", size: "auto" },
     },
     [CanvasNodeType.Text]: {
-        width: 340, height: 240, get title() { return NODE_DEFAULT_SIZE[CanvasNodeType.Text].title; },
+        width: 340, height: 236, get title() { return NODE_DEFAULT_SIZE[CanvasNodeType.Text].title; },
         metadata: { content: "", status: "idle", fontSize: 14 },
     },
     [CanvasNodeType.Config]: {
@@ -34,7 +34,7 @@ export const NODE_SPECS = {
     },
     [CanvasNodeType.Video]: {
         width: 420, height: 236, get title() { return NODE_DEFAULT_SIZE[CanvasNodeType.Video].title; },
-        metadata: { content: "", status: "idle" },
+        metadata: { content: "", status: "idle", size: "auto" },
     },
     [CanvasNodeType.Audio]: {
         width: 340, height: 120, get title() { return NODE_DEFAULT_SIZE[CanvasNodeType.Audio].title; },

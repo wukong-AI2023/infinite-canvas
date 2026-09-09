@@ -76,7 +76,7 @@ export function CanvasZoomControls({
                 <Tooltip title={t("canvas.zoom")}>
                     <input
                         type="range"
-                        min="5"
+                        min="25"
                         max="500"
                         step="1"
                         value={Math.round(scale * 100)}

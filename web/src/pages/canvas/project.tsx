@@ -131,6 +131,20 @@ const NODE_STATUS_IDLE = "idle" as const;
 const NODE_STATUS_LOADING = "loading" as const;
 const NODE_STATUS_SUCCESS = "success" as const;
 const NODE_STATUS_ERROR = "error" as const;
+const REMEMBERED_NODE_CONFIG_KEYS: Record<CanvasNodeGenerationMode, readonly (keyof CanvasNodeMetadata)[]> = {
+    text: ["model", "reasoningEffort", "textCount"],
+    image: ["model", "size", "quality", "background", "count"],
+    video: ["model", "size", "seconds", "vquality", "generateAudio", "watermark", "videoMode"],
+    audio: ["model", "audioVoice", "audioFormat", "audioSpeed", "audioInstructions"],
+};
+
+function nodeGenerationMode(type: CanvasNodeTypeId): CanvasNodeGenerationMode | null {
+    return type === CanvasNodeType.Text ? "text" : type === CanvasNodeType.Image ? "image" : type === CanvasNodeType.Video ? "video" : type === CanvasNodeType.Audio ? "audio" : null;
+}
+
+function rememberedNodeConfig(mode: CanvasNodeGenerationMode, metadata: CanvasNodeMetadata) {
+    return Object.fromEntries(REMEMBERED_NODE_CONFIG_KEYS[mode].flatMap((key) => (metadata[key] === undefined ? [] : [[key, metadata[key]]]))) as CanvasNodeMetadata;
+}
 
 function applyGeneratedVideo(item: CanvasNodeData, video: UploadedFile, extra: CanvasNodeData["metadata"] = {}): CanvasNodeData {
     const videoSize = fitNodeSize(video.width || item.width, video.height || item.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
@@ -208,6 +222,8 @@ function InfiniteCanvasPage() {
     const createProject = useCanvasStore((state) => state.createProject);
     const openProject = useCanvasStore((state) => state.openProject);
     const updateProject = useCanvasStore((state) => state.updateProject);
+    const lastNodeConfigs = useCanvasStore((state) => state.lastNodeConfigs);
+    const updateLastNodeConfig = useCanvasStore((state) => state.updateLastNodeConfig);
     const renameProject = useCanvasStore((state) => state.renameProject);
     const deleteProjects = useCanvasStore((state) => state.deleteProjects);
     const currentProject = useCanvasStore((state) => state.projects.find((project) => project.id === projectId));
@@ -441,7 +457,7 @@ function InfiniteCanvasPage() {
             setActiveChatId(project.activeChatId || null);
             setBackgroundMode(project.backgroundMode);
             setShowImageInfo(project.showImageInfo || false);
-            setViewport(project.viewport);
+            setViewport({ ...project.viewport, k: Math.max(project.viewport.k, 0.25) });
             historyRef.current = { past: [], future: [] };
             if (historyCommitTimerRef.current) {
                 clearTimeout(historyCommitTimerRef.current);
@@ -644,7 +660,7 @@ function InfiniteCanvasPage() {
     const getConnectionDropTarget = useCallback(
         (clientX: number, clientY: number, current: ConnectionHandle): ConnectionDropTarget => {
             const world = screenToCanvas(clientX, clientY);
-            const scale = Math.max(viewportRef.current.k, 0.05);
+            const scale = Math.max(viewportRef.current.k, 0.25);
             const padding = CONNECTION_NODE_HIT_PADDING / scale;
             const handleRadius = CONNECTION_HANDLE_HIT_RADIUS / scale;
             let isNearNode = false;
@@ -799,6 +815,7 @@ function InfiniteCanvasPage() {
     const createNode = useCallback(
         (type: CanvasNodeTypeId, position?: Position) => {
             const targetPosition = position || getCanvasCenter();
+            const mode = nodeGenerationMode(type);
             const configMetadata =
                 type === CanvasNodeType.Config
                     ? {
@@ -806,8 +823,11 @@ function InfiniteCanvasPage() {
                           size: effectiveConfig.size,
                           count: getGenerationCount(effectiveConfig.canvasImageCount || effectiveConfig.count),
                       }
-                    : undefined;
-            const newNode = createCanvasNode(type, targetPosition, configMetadata);
+                    : mode
+                      ? lastNodeConfigs[mode]
+                      : undefined;
+            const createdNode = createCanvasNode(type, targetPosition, configMetadata);
+            const newNode = mode && configMetadata ? applyNodeConfigPatch(createdNode, configMetadata) : createdNode;
 
             setNodes((prev) => [...prev, newNode]);
             setSelectedNodeIds(new Set([newNode.id]));
@@ -825,7 +845,7 @@ function InfiniteCanvasPage() {
                     : isBuiltinType(type) && type !== CanvasNodeType.Text && type !== CanvasNodeType.Audio && type !== CanvasNodeType.Group;
             if (wantsPanel) setDialogNodeId(newNode.id);
         },
-        [effectiveConfig.canvasImageCount, effectiveConfig.count, effectiveConfig.imageModel, effectiveConfig.model, effectiveConfig.size, getCanvasCenter],
+        [effectiveConfig.canvasImageCount, effectiveConfig.count, effectiveConfig.imageModel, effectiveConfig.model, effectiveConfig.size, getCanvasCenter, lastNodeConfigs],
     );
 
     const deleteNodes = useCallback(
@@ -1067,7 +1087,7 @@ function InfiniteCanvasPage() {
             if (!node) return;
             const worldX = node.position.x + node.width / 2;
             const worldY = node.position.y + node.height / 2;
-            const k = Math.min(Math.max(Math.min((size.width * 0.6) / node.width, (size.height * 0.6) / node.height), 0.05), 1);
+            const k = Math.min(Math.max(Math.min((size.width * 0.6) / node.width, (size.height * 0.6) / node.height), 0.25), 1);
             const target = { x: size.width / 2 - worldX * k, y: size.height / 2 - worldY * k, k };
             setSelectedNodeIds(new Set([nodeId]));
             setSelectedConnectionId(null);
@@ -1094,7 +1114,7 @@ function InfiniteCanvasPage() {
 
     const setZoomScale = useCallback(
         (scale: number) => {
-            const nextScale = Math.min(Math.max(scale, 0.05), 5);
+            const nextScale = Math.min(Math.max(scale, 0.25), 5);
             setViewport((prev) => ({
                 x: size.width / 2 - ((size.width / 2 - prev.x) / prev.k) * nextScale,
                 y: size.height / 2 - ((size.height / 2 - prev.y) / prev.k) * nextScale,
@@ -1746,8 +1766,13 @@ function InfiniteCanvasPage() {
     }, []);
 
     const handleConfigNodeChange = useCallback((nodeId: string, patch: Partial<CanvasNodeData["metadata"]>) => {
+        const mode = nodeGenerationMode(nodesRef.current.find((node) => node.id === nodeId)?.type || "");
+        if (mode && patch) {
+            const remembered = rememberedNodeConfig(mode, patch);
+            if (Object.keys(remembered).length) updateLastNodeConfig(mode, remembered);
+        }
         setNodes((prev) => prev.map((node) => (node.id === nodeId ? applyNodeConfigPatch(node, patch) : node)));
-    }, []);
+    }, [updateLastNodeConfig]);
 
     const downloadNodeImage = useCallback((node: CanvasNodeData) => {
         if ((node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Video && node.type !== CanvasNodeType.Audio) || !node.metadata?.content) return;
@@ -3274,12 +3299,11 @@ function InfiniteCanvasPage() {
                 ) : null}
 
                 <CanvasToolbar
-                    onAddImage={() => createNode(CanvasNodeType.Image)}
-                    onAddVideo={() => createNode(CanvasNodeType.Video)}
-                    onAddAudio={() => createNode(CanvasNodeType.Audio)}
-                    onAddText={() => createNode(CanvasNodeType.Text)}
-                    onAddConfig={() => createNode(CanvasNodeType.Config)}
-                    onAddGroup={() => createNode(CanvasNodeType.Group)}
+                    onHome={() => navigate("/")}
+                    onProjects={() => navigate("/canvas")}
+                    onCreateProject={createAndOpenProject}
+                    onImportAsset={() => handleUploadRequest()}
+                    onExportProject={exportCurrentProject}
                     onAddExtensionNode={(type) => createNode(type)}
                     onUpload={() => handleUploadRequest()}
                     onCreateNode={(type) => createNode(type)}

@@ -20,6 +20,11 @@ description: Major features available in the current project
 - Create nodes from the vertical left rail and its hover menu, while canvas tools, history, appearance, delete, and clear actions remain in the bottom toolbar.
 - Keep node prompt panels, creation menus, and connection menus at a stable screen size while zooming; media previews fill their rounded frames, and empty media nodes show centered icons.
 - Follow the active theme in configuration-panel borders and dividers, and use a neutral `#7a7a7a` selection stroke across nodes, reference highlights, group drop targets, prompt references, and marquee selection.
+- Keep image generation counts as `1 / 2 / 4 / custom`, remember the latest model and parameters independently for each node type, and show an icon-only stop control while generating.
+- Limit canvas zoom to a minimum of `25%`, use a dotted grid for new canvases, and preserve each canvas's saved grid style when reopened.
+- Use `236px` as the default short edge for image and video nodes, keep text nodes at `236px` high, and default image/video ratio settings to automatic while preserving node center when ratios change.
+- Gracefully fall back to thread-summary reads when the local Codex app-server rejects paginated `thread/read(includeTurns=true)` requests.
+- Use a `228px` node creation menu and label panorama nodes as `360°全景查看器`; keep prompt panels at `638px × 258px` and provide canvas/project actions through the left toolbar with unified tooltips.
 
 ## Nodes and workflows
 

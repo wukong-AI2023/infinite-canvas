@@ -90,7 +90,7 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
 
         const delta = -event.deltaY;
         const factor = Math.pow(1.1, delta / 100);
-        const newScale = Math.min(Math.max(viewport.k * factor, 0.05), 5);
+        const newScale = Math.min(Math.max(viewport.k * factor, 0.25), 5);
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
 

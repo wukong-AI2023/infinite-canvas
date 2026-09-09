@@ -443,7 +443,7 @@ export const CanvasNode = React.memo(function CanvasNode({
             {!referenceSelectionState && !isGroup ? <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} /> : null}
             {!referenceSelectionState && (definition?.hasSourceHandle ?? true) && data.type !== CanvasNodeType.Config ? <ConnectionHandleDot side="right" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "source")} /> : null}
 
-            {showPanel && !isGroup && renderPanel ? <div className="absolute left-1/2 top-full z-[70] w-[638px] pt-4" style={{ transform: `translateX(-50%) scale(${1 / Math.max(scale, 0.05)})`, transformOrigin: "top center" }}>{renderPanel(data)}</div> : null}
+            {showPanel && !isGroup && renderPanel ? <div className="absolute left-1/2 top-full z-[70] w-[638px] pt-4" style={{ transform: `translateX(-50%) scale(${1 / Math.max(scale, 0.25)})`, transformOrigin: "top center" }}>{renderPanel(data)}</div> : null}
         </div>
     );
 });

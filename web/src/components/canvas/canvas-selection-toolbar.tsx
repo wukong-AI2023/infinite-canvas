@@ -73,7 +73,7 @@ export function CanvasSelectionToolbar({
 
 function SelectionAction({ theme, title, label, icon, onClick }: { theme: CanvasTheme; title: string; label: string; icon: ReactNode; onClick: () => void }) {
     return (
-        <Tooltip title={title} placement="top" mouseEnterDelay={0.2} color={theme.toolbar.panel} styles={{ root: { color: theme.node.text, boxShadow: "0 8px 24px rgba(0,0,0,.24)", fontSize: 13, fontWeight: 500 } }}>
+        <Tooltip title={title} placement="top" mouseEnterDelay={0.2}>
             <button type="button" className="group relative flex h-12 items-center whitespace-nowrap px-1.5" onClick={onClick} aria-label={title}>
                 <span className="flex h-9 items-center gap-2 rounded-full px-2.5 transition" style={{ color: theme.toolbar.item }} onMouseEnter={(event) => (event.currentTarget.style.background = theme.toolbar.itemHover)} onMouseLeave={(event) => (event.currentTarget.style.background = "transparent")}>
                     {icon}

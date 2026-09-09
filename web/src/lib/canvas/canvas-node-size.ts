@@ -12,5 +12,6 @@ export function nodeSizeFromRatio(size: string, baseWidth: number, baseHeight: n
     const height = Number(match[2]);
     const ratio = width / Math.max(1, height);
     if (ratio < 0.25 || ratio > 4) return { width: baseWidth, height: baseHeight };
-    return ratio >= baseWidth / baseHeight ? { width: baseWidth, height: baseWidth / ratio } : { width: baseHeight * ratio, height: baseHeight };
+    const shortSide = Math.min(baseWidth, baseHeight);
+    return ratio >= 1 ? { width: Math.round(shortSide * ratio), height: shortSide } : { width: shortSide, height: Math.round(shortSide / ratio) };
 }

@@ -432,17 +432,23 @@ async function loadCodexHistory(emit: AgentEmit, threadId: string, cwd?: string)
     try {
         return { thread: await loadCodexThread(emit, threadId, cwd, true), historyReady: true };
     } catch (error) {
-        if (/not materialized yet.*includeTurns/i.test(errorMessage(error))) return { thread: await loadCodexThread(emit, threadId, cwd, false), historyReady: false };
+        if (isThreadHistoryUnavailable(error)) return { thread: await loadCodexThread(emit, threadId, cwd, false), historyReady: false };
         if (!isRecoverableThreadError(error)) throw error;
         const app = await getCodexApp(emit);
         const thread = await resumeLoadedThread(app, threadId, cwd, "request", false);
         try {
             return { thread: await loadCodexThread(emit, threadId, cwd, true), historyReady: true };
         } catch (historyError) {
-            if (/not materialized yet.*includeTurns/i.test(errorMessage(historyError))) return { thread, historyReady: false };
+            if (isThreadHistoryUnavailable(historyError)) return { thread, historyReady: false };
             throw historyError;
         }
     }
+}
+
+/** 新版 app-server 对分页线程不接受 includeTurns=true；线程摘要仍可用于初始化新对话。 */
+function isThreadHistoryUnavailable(error: unknown) {
+    const message = errorMessage(error);
+    return /not materialized yet.*includeTurns|paginated threads do not support thread\/read\s*\(\s*includeTurns\s*=\s*true\s*\)/i.test(message);
 }
 
 /** 恢复线程并统一校验工作空间与进程内活动线程。 */

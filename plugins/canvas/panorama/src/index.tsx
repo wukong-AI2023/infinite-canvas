@@ -267,7 +267,7 @@ export default definePlugin({
             type: "panorama:viewer",
             title: "3D 全景",
             icon: "🌐",
-            description: "360° 全景查看器(上传 / AI 生成)",
+            description: "360°全景查看器",
             defaultSize: { width: 480, height: 300 },
             defaultMetadata: {},
             minimapColor: "#0ea5e9",
