@@ -7,9 +7,6 @@ description: Implemented changes that still need manual verification
 
 The current release needs manual verification in these areas:
 
-- Canvas node frame fill: image and video content should cover the rounded node frame without letterbox gaps; empty/text/audio nodes should not show a transparent bleed at the bottom corners.
-- Node selection stroke: selected image/video/text/group nodes, reference-pick available outlines, group drop highlights, primary-star icons, prompt `@` chips, and the marquee selection rectangle should use `#7a7a7a` in Light / Dark / Dark gray, with no bright blue selection outline.
-- Dark gray canvas theme: Appearance should offer Light / Dark / Dark gray. Choosing Dark gray should apply a cool-gray canvas (`#0a0a0a`), nodes, toolbars, Ant Design popovers, and stone utilities. The top sun/moon control should only toggle light ↔ the last selected dark theme (dark or dark gray), not switch between the two dark palettes. Choosing Dark again should restore the warm stone dark theme. Switching to Light and back to dark should restore the previously selected dark palette.
 - Local proxy: Settings should show a dedicated Local proxy tab between Providers and Preferences, with a switch that is off by default. Turning it on should reveal the `npx @basketikun/canvas-proxy@latest` command (with `--port` appended when a non-default port is configured), a copy action, and an address field defaulting to `http://127.0.0.1:23210` that normalizes a missing scheme and trailing slashes on blur. Test connection should succeed only while the command is running. With the proxy on, fetching model lists, generating images, videos, text (including streamed output), and audio, running custom call scripts, polling video tasks, downloading generated images and videos, and WebDAV connection tests plus sync should all route through the proxy and keep working; turning it off should restore direct requests. The proxy itself should forward request methods, headers, query strings, and bodies unchanged, stream SSE responses without buffering, and keep `data:` and `blob:` URLs untouched.
 - Image and video size settings: Image settings should split resolution (`1k` / `2k` / `4k` / auto) from aspect ratio (`1:1`, `2:3`, `3:2`, `4:3`, `3:4`, `16:9`, `9:16`, `21:9`, `9:21`, auto) and fill W/H from that pair. Video settings should keep `480p` / `720p` / `1080p` (plus a custom `p` value) and `1:1` / `3:4` / `4:3` / `16:9` / `9:16` / `21:9` / auto, then fill W/H from that pair. Duration should be a 4–30 second slider with the current value on the right; auto ratio should disable W/H.
 - Built-in video requests: without a custom call script, OpenAI-format channels should send `mode`, `first_frame`/`last_frame` or `image[]`, `generate_audio`, `watermark`, and reference videos/audio like the insertable template, and must not use `input_reference[]`. Gemini-format channels should use `predictLongRunning` with `image`/`lastFrame` or `referenceImages`, and must not report that video is unsupported. Refreshing the page should continue polling a Gemini task.
@@ -59,30 +56,6 @@ The current release needs manual verification in these areas:
 - Canvas video task resume: starting an OpenAI-style video generation should store the remote task ID on the video node. After a page refresh, a still-pending video should keep polling automatically; if polling stopped, **Get task status** should resume with that task ID until the video is ready, the task fails, or the status request errors. Task failure should then allow a normal retry that creates a new generation.
 
 The Chinese version contains the complete item-by-item acceptance checklist.
-
-## 节点预览铺满
-
-待验收：
-
-- 图片、视频节点的内容应铺满圆角框，预览与高亮框四角之间不再出现暗缝，左右连接点应完整显示在描边上层。空节点、文本、音频底部左右圆角不应再露出透明溢色。
-
-## 配置面板主题描边
-
-待验收：
-
-- 深色和深灰主题下，配置面板的渠道卡片、分隔线、WebDAV/本地代理/本地存储/提示词来源区块及相关列表边界均应清晰可见，并随当前主题切换。
-
-## 节点选中描边
-
-待验收：
-
-- 浅色、深色、深灰主题下，选中图片/视频/文本/组节点的描边应为 `#7a7a7a`，不再出现亮蓝。参考选择可选态描边、组投放高亮、主图星标、提示词 `@` 高亮、框选矩形也应是同一灰色。
-
-## 画布深灰主题
-
-待验收：
-
-- 画布外观「主题模式」应出现浅色 / 深色 / 深灰三项。选深灰后，画布底为 `#0a0a0a`，节点、工具栏、Ant Design 浮层和工作台 stone 色变为冷灰。顶栏太阳/月亮只在浅色与当前暗色之间切换，不在深色和深灰之间切换。外观改选深色应恢复原来的暖石色深色。先选深灰再切到浅色，再点暗，应回到深灰。
 
 ## 图片分辨率尺寸表
 

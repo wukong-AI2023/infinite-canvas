@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ImageIcon, List, Music2, Settings2, Video, X } from "lucide-react";
+import { ImageIcon, List, Music2, Settings2, Upload, Video, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -14,10 +14,12 @@ export type PendingConnectionCreate = {
 
 export function ConnectionCreateMenu({
     pending,
+    scale,
     onCreate,
     onClose,
 }: {
     pending: PendingConnectionCreate;
+    scale: number;
     onCreate: (type: CanvasNodeType.Image | CanvasNodeType.Text | CanvasNodeType.Config | CanvasNodeType.Video | CanvasNodeType.Audio) => void;
     onClose: () => void;
 }) {
@@ -25,9 +27,9 @@ export function ConnectionCreateMenu({
     const { t } = useTranslation();
     return (
         <div
-            className="absolute z-[120] w-[300px] rounded-[18px] border p-3 shadow-2xl backdrop-blur"
+            className="absolute z-[120] w-[300px] rounded-[16px] border p-3 shadow-2xl backdrop-blur"
             data-connection-create-menu
-            style={{ left: pending.position.x, top: pending.position.y, background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+            style={{ left: pending.position.x, top: pending.position.y, transform: `scale(${0.9 / Math.max(scale, 0.05)})`, transformOrigin: "top left", background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
         >
@@ -57,10 +59,10 @@ export function ConnectionCreateOption({ theme, icon, title, description, onClic
             className="flex h-16 w-full cursor-pointer items-center gap-3 rounded-2xl px-3 text-left transition"
             style={{ color: theme.node.text }}
             onClick={onClick}
-            onMouseEnter={(event) => (event.currentTarget.style.background = theme.node.fill)}
+            onMouseEnter={(event) => (event.currentTarget.style.background = theme.toolbar.activeBg)}
             onMouseLeave={(event) => (event.currentTarget.style.background = "transparent")}
         >
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl" style={{ background: theme.node.fill, color: theme.node.muted }}>
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl" style={{ background: theme.toolbar.itemHover, color: theme.node.muted }}>
                 {icon}
             </span>
             <span className="min-w-0 flex-1">
@@ -75,7 +77,7 @@ export function ConnectionCreateOption({ theme, icon, title, description, onClic
     );
 }
 
-export function NodeCreateMenu({ position, onCreate, onClose }: { position: Position; onCreate: (type: string) => void; onClose: () => void }) {
+export function NodeCreateMenu({ position, scale, onCreate, onUpload, onClose, onMouseEnter, onMouseLeave }: { position: Position; scale: number; onCreate: (type: string) => void; onUpload?: () => void; onClose: () => void; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const { t } = useTranslation();
     useNodeRegistryVersion();
@@ -92,9 +94,11 @@ export function NodeCreateMenu({ position, onCreate, onClose }: { position: Posi
     return (
         <div
             ref={menuRef}
-            className="absolute z-[120] max-h-[70vh] w-[300px] overflow-y-auto rounded-[18px] border p-3 shadow-2xl backdrop-blur thin-scrollbar"
+            className="pointer-events-auto absolute z-[120] max-h-[70vh] w-[238px] overflow-y-auto rounded-[16px] border p-3 shadow-2xl backdrop-blur thin-scrollbar"
             data-canvas-no-zoom
-            style={{ left: position.x, top: position.y, background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+            style={{ left: position.x, top: position.y, transform: `scale(${0.9 / Math.max(scale, 0.05)})`, transformOrigin: "top left", background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
             onPointerDown={(event) => event.stopPropagation()}
         >
             <div className="mb-2 flex items-center justify-between px-1">
@@ -109,6 +113,7 @@ export function NodeCreateMenu({ position, onCreate, onClose }: { position: Posi
                 {definitions.map((def) => (
                     <ConnectionCreateOption key={def.type} theme={theme} icon={def.icon} title={def.title} description={def.description} onClick={() => onCreate(def.type)} />
                 ))}
+                {onUpload ? <ConnectionCreateOption theme={theme} icon={<Upload className="size-5" />} title={t("canvas.toolbar.upload")} onClick={onUpload} /> : null}
             </div>
         </div>
     );
