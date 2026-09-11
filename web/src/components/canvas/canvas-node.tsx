@@ -13,6 +13,8 @@ import type { CanvasNodeContext, CanvasPluginHost } from "@/types/canvas-plugin"
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { useTranslation } from "react-i18next";
 
+const NODE_FRAME_RADIUS_PX = 20;
+
 type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
 type CanvasNodeProps = {
@@ -356,9 +358,10 @@ export const CanvasNode = React.memo(function CanvasNode({
 
             <div className="relative h-full w-full">
                 <div
-                    className={`relative h-full w-full rounded-[16px] ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
+                    className={`relative h-full w-full rounded-[20px] ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
                     style={{
                         background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
+                        borderRadius: NODE_FRAME_RADIUS_PX,
                         boxShadow: isGroupDropTarget ? `0 0 0 2px ${theme.node.activeStroke}66, inset 0 0 0 999px ${theme.node.activeStroke}10` : isActive ? `0 0 0 1px ${theme.node.activeStroke}55` : isRelated ? `0 0 0 1px ${theme.node.muted}55, 0 18px 48px rgba(0,0,0,.14)` : undefined,
                     }}
                     onMouseDown={(event) => {
@@ -388,10 +391,11 @@ export const CanvasNode = React.memo(function CanvasNode({
                     }}
                 >
                     <div
-                        className={`relative flex h-full w-full items-center justify-center rounded-[16px] ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
+                        className={`relative flex h-full w-full items-center justify-center rounded-[20px] ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
                         style={
                             {
                                 background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
+                                borderRadius: NODE_FRAME_RADIUS_PX,
                                 pointerEvents: contentInteractive ? undefined : "none",
                             } as React.CSSProperties
                         }
@@ -430,8 +434,8 @@ export const CanvasNode = React.memo(function CanvasNode({
                     ) : null}
 
                     <div
-                        className={`pointer-events-none absolute inset-0 z-[65] rounded-[inherit] border-2 ${isGroup ? "border-dashed" : "border-solid"}`}
-                        style={{ borderColor: isGroup ? (isGroupDropTarget || isActive ? theme.node.activeStroke : theme.node.stroke) : hasImageContent ? imageBorderColor : isActive ? theme.node.activeStroke : isRelated ? theme.node.muted : transparentBg ? "transparent" : theme.node.stroke }}
+                        className={`pointer-events-none absolute inset-0 z-[65] rounded-[20px] border-2 ${isGroup ? "border-dashed" : "border-solid"}`}
+                        style={{ borderRadius: NODE_FRAME_RADIUS_PX, borderColor: isGroup ? (isGroupDropTarget || isActive ? theme.node.activeStroke : theme.node.stroke) : hasImageContent ? imageBorderColor : isActive ? theme.node.activeStroke : isRelated ? theme.node.muted : transparentBg ? "transparent" : theme.node.stroke }}
                     />
                 </div>
                 {!referenceSelectionState ? <ResizeHandle corner="top-left" onMouseDown={handleResizeMouseDown} /> : null}
@@ -534,6 +538,27 @@ function MissingPluginContent({ theme, type }: Pick<NodeContentRendererProps, "t
     );
 }
 
+function overlayChipStyle(theme: (typeof canvasThemes)[keyof typeof canvasThemes]) {
+    return { background: `color-mix(in srgb, ${theme.toolbar.panel} 80%, transparent)`, borderColor: theme.toolbar.border, color: theme.toolbar.activeText };
+}
+
+function OverlayIconButton({ title, onClick, children, className, theme }: { title: string; onClick: () => void; children: ReactNode; className?: string; theme: (typeof canvasThemes)[keyof typeof canvasThemes] }) {
+    return (
+        <button type="button" className={`grid size-8 place-items-center rounded-lg border p-0 leading-none shadow-[0_6px_18px_rgba(15,23,42,.16)] backdrop-blur-md transition hover:scale-[1.02] ${className ?? ""} [&_svg]:block`} style={overlayChipStyle(theme)} title={title} aria-label={title} onClick={(event) => (event.stopPropagation(), onClick())}>
+            {children}
+        </button>
+    );
+}
+
+function OverlayCountButton({ count, expanded, ariaLabel, onClick, theme, className }: { count: number; expanded: boolean; ariaLabel: string; onClick: () => void; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; className?: string }) {
+    return (
+        <button type="button" className={`inline-flex h-8 w-12 items-center justify-center gap-0.5 rounded-lg border p-0 text-xs font-semibold leading-none shadow-[0_6px_18px_rgba(28,25,23,.16)] backdrop-blur-md transition hover:scale-[1.02] ${className ?? ""} [&_svg]:block`} style={overlayChipStyle(theme)} aria-label={ariaLabel} title={ariaLabel} onClick={(event) => (event.stopPropagation(), onClick())} onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+            <span className="tabular-nums">{count}</span>
+            <ChevronRight className={`size-3 opacity-80 transition-transform ${expanded ? "rotate-90" : ""}`} />
+        </button>
+    );
+}
+
 function TextContent({ node, theme, isEditingContent, textareaRef, mentionReferences, batchExpanded, onContentChange, onStopEditing, onToggleBatch, onSetBatchPrimary }: NodeContentRendererProps) {
     const { t } = useTranslation();
     const fontSize = node.metadata?.fontSize || 14;
@@ -553,7 +578,7 @@ function TextContent({ node, theme, isEditingContent, textareaRef, mentionRefere
                       .filter((text) => text.id !== primaryTextId)
                       .map((text, index) => <ExpandedTextCard key={text.id} node={node} text={text} index={index} onSetPrimary={() => onSetBatchPrimary?.(text.id)} />)
                 : null}
-            <div className="flex h-full w-full flex-col overflow-hidden rounded-3xl">
+            <div className="flex h-full w-full flex-col overflow-hidden rounded-[20px]" style={{ borderRadius: NODE_FRAME_RADIUS_PX }}>
                 {isEditingContent ? (
                     <CanvasResourceMentionTextarea
                         ref={textareaRef}
@@ -584,21 +609,14 @@ function TextContent({ node, theme, isEditingContent, textareaRef, mentionRefere
                 )}
             </div>
             {isBatchRoot ? (
-                <button
-                    type="button"
-                    className="absolute right-2.5 top-2.5 z-30 flex h-8 items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-semibold shadow-[0_6px_18px_rgba(28,25,23,.12)] backdrop-blur-md transition hover:scale-[1.02]"
-                    style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.activeText }}
-                    aria-label={batchExpanded ? t("canvas.node.textBatchExpanded") : t("canvas.node.textBatchCollapsed")}
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        onToggleBatch?.();
-                    }}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    onPointerDown={(event) => event.stopPropagation()}
-                >
-                    <span className="leading-none">{t("canvas.controls.texts", { count: batchCount })}</span>
-                    <ChevronRight className={`size-3.5 opacity-80 transition-transform ${batchExpanded ? "rotate-90" : ""}`} />
-                </button>
+                <OverlayCountButton
+                    count={batchCount}
+                    expanded={!!batchExpanded}
+                    ariaLabel={batchExpanded ? t("canvas.node.textBatchExpanded") : t("canvas.node.textBatchCollapsed")}
+                    onClick={() => onToggleBatch?.()}
+                    theme={theme}
+                    className="absolute right-2.5 top-2.5 z-30"
+                />
             ) : null}
         </BatchFrame>
     );
@@ -608,7 +626,7 @@ function ExpandedTextCard({ node, text, index, onSetPrimary }: { node: CanvasNod
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const { t } = useTranslation();
     const count = node.metadata?.texts?.length || 0;
-    const columns = Math.min(count, 4);
+    const columns = Math.min(count, 2);
     const rows = Math.ceil(count / columns);
     const rootSlot = (rows - 1) * columns;
     const slot = index >= rootSlot ? index + 1 : index;
@@ -617,7 +635,7 @@ function ExpandedTextCard({ node, text, index, onSetPrimary }: { node: CanvasNod
 
     return (
         <div
-            className="absolute z-20 overflow-hidden rounded-3xl border shadow-[0_18px_50px_rgba(28,25,23,.14)]"
+            className="absolute z-20 overflow-hidden rounded-[20px] border shadow-[0_18px_50px_rgba(28,25,23,.14)]"
             style={
                 {
                     left: x,
@@ -626,6 +644,7 @@ function ExpandedTextCard({ node, text, index, onSetPrimary }: { node: CanvasNod
                     height: node.height,
                     background: theme.node.panel,
                     borderColor: theme.node.stroke,
+                    borderRadius: NODE_FRAME_RADIUS_PX,
                     "--batch-from-x": `${-x}px`,
                     "--batch-from-y": `${-y}px`,
                     "--batch-from-rotate": `${4 + index * 2}deg`,
@@ -745,7 +764,7 @@ function ImageContent({
                       .filter((image) => image.id !== primaryImageId)
                       .map((image, index) => <ExpandedImageCard key={image.id} node={node} image={image} index={index} onView={() => onViewBatchImage?.(image.id)} onSetPrimary={() => onSetBatchPrimary?.(image.id)} onDuplicate={() => onDuplicateBatchImage?.(image.id)} onDownload={() => onDownloadBatchImage?.(image.id)} onRetry={() => onRetryBatchImage?.(image.id)} onDelete={() => onDeleteBatchImage?.(image.id)} />)
                 : null}
-            <div className="h-full w-full overflow-hidden rounded-3xl">
+            <div className="h-full w-full overflow-hidden rounded-[20px]" style={{ borderRadius: NODE_FRAME_RADIUS_PX }}>
                 {primaryContent ? (
                     <img
                         src={primaryContent}
@@ -759,28 +778,20 @@ function ImageContent({
                 )}
             </div>
             {primaryImage?.status === "error" ? <BatchImageFailureActions placement="left" onRetry={() => onRetryBatchImage?.(primaryImage.id)} onDelete={() => onDeleteBatchImage?.(primaryImage.id)} /> : null}
-            {primaryImage?.content ? (
-                <button type="button" className="absolute left-2.5 top-2.5 z-30 flex h-8 items-center gap-1 rounded-lg border px-2 text-[10px] font-medium shadow-[0_6px_18px_rgba(15,23,42,.16)] backdrop-blur-md transition hover:scale-[1.02]" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.activeText }} title={t("common.download")} onClick={(event) => (event.stopPropagation(), onDownloadBatchImage?.(primaryImage.id))}>
-                    <Download className="size-3" />
-                    {t("common.download")}
-                </button>
+            {isBatchRoot && batchExpanded && primaryImage?.content ? (
+                <OverlayIconButton title={t("common.download")} onClick={() => onDownloadBatchImage?.(primaryImage.id)} theme={theme} className="absolute left-2.5 top-2.5 z-30">
+                    <Download className="size-3.5" />
+                </OverlayIconButton>
             ) : null}
             {isBatchRoot ? (
-                <button
-                    type="button"
-                    className="absolute right-2.5 top-2.5 z-30 flex h-8 items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-semibold shadow-[0_6px_18px_rgba(28,25,23,.16)] backdrop-blur-md transition hover:scale-[1.02]"
-                    style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.activeText }}
-                    aria-label={batchExpanded ? t("canvas.node.batchExpanded") : t("canvas.node.batchCollapsed")}
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        onToggleBatch?.();
-                    }}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    onPointerDown={(event) => event.stopPropagation()}
-                >
-                    <span className="leading-none">{t("canvas.controls.images", { count: batchCount })}</span>
-                    <ChevronRight className={`size-3.5 opacity-80 transition-transform ${batchExpanded ? "rotate-90" : ""}`} />
-                </button>
+                <OverlayCountButton
+                    count={batchCount}
+                    expanded={!!batchExpanded}
+                    ariaLabel={batchExpanded ? t("canvas.node.batchExpanded") : t("canvas.node.batchCollapsed")}
+                    onClick={() => onToggleBatch?.()}
+                    theme={theme}
+                    className="absolute right-2.5 top-2.5 z-30"
+                />
             ) : null}
         </BatchFrame>
     );
@@ -790,7 +801,7 @@ function ExpandedImageCard({ node, image, index, onView, onSetPrimary, onDuplica
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const { t } = useTranslation();
     const count = node.metadata?.images?.length || 0;
-    const columns = Math.min(count, 4);
+    const columns = Math.min(count, 2);
     const rows = Math.ceil(count / columns);
     const rootSlot = (rows - 1) * columns;
     const slot = index >= rootSlot ? index + 1 : index;
@@ -801,7 +812,7 @@ function ExpandedImageCard({ node, image, index, onView, onSetPrimary, onDuplica
 
     return (
         <div
-            className={`absolute z-20 overflow-hidden rounded-3xl ${image.content ? "" : "border shadow-[0_18px_50px_rgba(28,25,23,.18)]"}`}
+            className={`absolute z-20 overflow-hidden rounded-[20px] ${image.content ? "" : "border shadow-[0_18px_50px_rgba(28,25,23,.18)]"}`}
             style={
                 {
                     left: x,
@@ -810,6 +821,7 @@ function ExpandedImageCard({ node, image, index, onView, onSetPrimary, onDuplica
                     height: node.height,
                     background: "transparent",
                     borderColor: theme.node.stroke,
+                    borderRadius: NODE_FRAME_RADIUS_PX,
                     "--batch-from-x": `${-x}px`,
                     "--batch-from-y": `${-y}px`,
                     "--batch-from-rotate": `${4 + index * 2}deg`,
@@ -826,19 +838,16 @@ function ExpandedImageCard({ node, image, index, onView, onSetPrimary, onDuplica
         >
             {image.content ? <img src={image.content} alt={node.title} draggable={false} className="pointer-events-none h-full w-full select-none object-cover" /> : <ImageSlotStatus image={image} />}
             {image.content ? (
-                <div className="absolute inset-x-2 top-2 flex items-center gap-1">
-                    <button type="button" className="flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] font-medium shadow-[0_6px_18px_rgba(15,23,42,.16)] backdrop-blur-md transition hover:scale-[1.02]" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.activeText }} title={t("common.download")} onClick={(event) => (event.stopPropagation(), onDownload())}>
-                        <Download className="size-3 shrink-0" />
-                        <span className="truncate">{t("common.download")}</span>
-                    </button>
-                    <button type="button" className="flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] font-medium shadow-[0_6px_18px_rgba(15,23,42,.16)] backdrop-blur-md transition hover:scale-[1.02]" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.activeText }} title={t("canvas.node.createCopy")} onClick={(event) => (event.stopPropagation(), onDuplicate())}>
-                        <Copy className="size-3 shrink-0" />
-                        <span className="truncate">{t("canvas.node.createCopy")}</span>
-                    </button>
-                    <button type="button" className="flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] font-medium shadow-[0_6px_18px_rgba(15,23,42,.16)] backdrop-blur-md transition hover:scale-[1.02]" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.activeText }} title={t("canvas.node.setPrimary")} onClick={(event) => (event.stopPropagation(), onSetPrimary())}>
-                        <Star className="size-3 shrink-0" style={{ color: theme.node.activeStroke }} />
-                        <span className="truncate">{t("canvas.node.setPrimary")}</span>
-                    </button>
+                <div className="absolute left-2.5 top-2.5 z-30 flex items-center gap-1">
+                    <OverlayIconButton title={t("common.download")} onClick={onDownload} theme={theme}>
+                        <Download className="size-3.5" />
+                    </OverlayIconButton>
+                    <OverlayIconButton title={t("canvas.node.createCopy")} onClick={onDuplicate} theme={theme}>
+                        <Copy className="size-3.5" />
+                    </OverlayIconButton>
+                    <OverlayIconButton title={t("canvas.node.setPrimary")} onClick={onSetPrimary} theme={theme}>
+                        <Star className="size-3.5" />
+                    </OverlayIconButton>
                 </div>
             ) : null}
             {image.status === "error" ? <BatchImageFailureActions placement="right" onRetry={onRetry} onDelete={onDelete} /> : null}
@@ -898,11 +907,12 @@ function BatchFrame({ batchCount, batchExpanded, children }: { batchCount: numbe
                     {Array.from({ length: Math.min(batchCount - 1, 3) }).map((_, index) => (
                         <div
                             key={index}
-                            className="absolute rounded-3xl border shadow-[0_10px_24px_rgba(68,64,60,.12)] transition-all duration-300 group-hover/batch:translate-x-1"
+                            className="absolute rounded-[20px] border shadow-[0_10px_24px_rgba(68,64,60,.12)] transition-all duration-300 group-hover/batch:translate-x-1"
                             style={{
                                 inset: 0,
                                 background: `linear-gradient(135deg, ${theme.node.panel}, ${theme.node.fill})`,
                                 borderColor: theme.node.stroke,
+                                borderRadius: NODE_FRAME_RADIUS_PX,
                                 opacity: batchExpanded ? 0 : 1,
                                 transform: `translate(${10 + index * 6}px, ${4 + index * 3}px) rotate(${1.5 + index}deg)`,
                                 zIndex: -index - 1,

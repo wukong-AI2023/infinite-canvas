@@ -1,7 +1,8 @@
 import axios, { type AxiosRequestConfig } from "axios";
 
 import i18n from "@/i18n";
-import { buildApiUrl, withLocalProxy, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
+import { buildApiUrl, withApiLocalProxy, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
+import { isBlockedMediaType, mediaResponseError, requestMedia } from "./local-proxy";
 
 type RequestOptions = { signal?: AbortSignal };
 
@@ -40,23 +41,53 @@ function pluginHeaders(extra?: Record<string, string>, hasJsonBody = false): Rec
 }
 
 function pluginUrl(config: AiConfig, path: string) {
-    if (/^https?:/i.test(path)) return withLocalProxy(path);
+    if (/^https?:/i.test(path)) return withApiLocalProxy(path);
     return buildApiUrl(config.baseUrl, path.startsWith("/") ? path : `/${path}`);
 }
 
-function createPluginHttp(config: AiConfig, options?: RequestOptions): PluginHttp {
-    const run = async (method: "get" | "post", path: string, body: unknown, opts?: PluginHttpOptions) => {
-        const isForm = typeof FormData !== "undefined" && body instanceof FormData;
-        const response = await axios.request({
-            method,
-            url: pluginUrl(config, path),
-            data: method === "post" ? body : undefined,
-            params: opts?.params,
-            headers: pluginHeaders({ Authorization: `Bearer ${config.apiKey}`, ...opts?.headers }, method === "post" && !isForm && body !== undefined),
-            responseType: opts?.responseType || "json",
-            signal: options?.signal,
-        });
+function isPluginMediaGet(url: string, method: string | undefined, responseType: string | undefined, apiBaseUrl: string) {
+    const verb = (method || "get").toLowerCase();
+    if ((verb !== "get" && verb !== "head") || !/^https?:\/\//i.test(url)) return false;
+    if (responseType === "blob" || responseType === "arraybuffer") return true;
+    try {
+        const apiHost = /^https?:\/\//i.test(apiBaseUrl) ? new URL(apiBaseUrl).host : "";
+        return Boolean(apiHost && new URL(url).host !== apiHost);
+    } catch {
+        return false;
+    }
+}
+
+async function pluginAxios(config: AiConfig, requestConfig: AxiosRequestConfig & { url: string }, options?: RequestOptions) {
+    const url = pluginUrl(config, requestConfig.url);
+    const run = async (next: string) => {
+        const response = await axios.request({ ...requestConfig, url: next, signal: options?.signal });
+        const type = String(response.headers["content-type"] || (response.data instanceof Blob ? response.data.type : "") || "");
+        if ((requestConfig.responseType === "blob" || requestConfig.responseType === "arraybuffer") && isBlockedMediaType(type)) {
+            throw mediaResponseError(response.status);
+        }
         return response.data;
+    };
+    if (isPluginMediaGet(url, requestConfig.method, typeof requestConfig.responseType === "string" ? requestConfig.responseType : undefined, config.baseUrl)) {
+        return requestMedia(url, run);
+    }
+    return run(url);
+}
+
+function createPluginHttp(config: AiConfig, options?: RequestOptions): PluginHttp {
+    const run = (method: "get" | "post", path: string, body: unknown, opts?: PluginHttpOptions) => {
+        const isForm = typeof FormData !== "undefined" && body instanceof FormData;
+        return pluginAxios(
+            config,
+            {
+                method,
+                url: path,
+                data: method === "post" ? body : undefined,
+                params: opts?.params,
+                headers: pluginHeaders({ Authorization: `Bearer ${config.apiKey}`, ...opts?.headers }, method === "post" && !isForm && body !== undefined),
+                responseType: opts?.responseType || "json",
+            },
+            options,
+        );
     };
     return {
         url: (path) => pluginUrl(config, path),
@@ -67,9 +98,26 @@ function createPluginHttp(config: AiConfig, options?: RequestOptions): PluginHtt
 
 /** Raw request with no automatic auth header — the script controls method, url, headers, body entirely. */
 function createPluginRequest(config: AiConfig, options?: RequestOptions) {
-    return async (requestConfig: AxiosRequestConfig & { url: string }) => {
-        const response = await axios.request({ ...requestConfig, url: pluginUrl(config, requestConfig.url), signal: options?.signal });
-        return response.data;
+    return (requestConfig: AxiosRequestConfig & { url: string }) => pluginAxios(config, requestConfig, options);
+}
+
+function rewriteFetchInput(input: RequestInfo | URL, url: string) {
+    const proxied = withApiLocalProxy(url);
+    if (proxied === url) return input;
+    return input instanceof Request ? new Request(proxied, input) : proxied;
+}
+
+function createPluginFetch(config: AiConfig, options?: RequestOptions): typeof fetch {
+    return async (input, init) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        const method = init?.method || (input instanceof Request ? input.method : "GET");
+        const nextInput = rewriteFetchInput(input, url);
+        if (!isPluginMediaGet(url, method, undefined, config.baseUrl)) return fetch(nextInput, init);
+        return requestMedia(url, async (next) => {
+            const response = await fetch(next, { ...init, signal: init?.signal ?? options?.signal, referrerPolicy: init?.referrerPolicy || "no-referrer" });
+            if (!response.ok || isBlockedMediaType(response.headers.get("content-type"))) throw mediaResponseError(response.status);
+            return response;
+        });
     };
 }
 
@@ -115,6 +163,7 @@ export async function runModelPlugin<T = unknown>(args: RunPluginArgs): Promise<
     const http = createPluginHttp(config, { signal: args.signal });
     const request = createPluginRequest(config, { signal: args.signal });
     const poll = createPoll(args.signal);
+    const pluginFetch = createPluginFetch(config, { signal: args.signal });
     const runner = new Function(
         "prompt",
         "images",
@@ -133,7 +182,8 @@ export async function runModelPlugin<T = unknown>(args: RunPluginArgs): Promise<
         "sleep",
         "signal",
         "onDelta",
-        `"use strict"; return (async () => {\n${args.script}\n})();`,
+        "pluginFetch",
+        `"use strict"; return (async (fetch) => {\n${args.script}\n})(pluginFetch);`,
     ) as (...fnArgs: unknown[]) => Promise<T>;
     try {
         return await runner(
@@ -154,6 +204,7 @@ export async function runModelPlugin<T = unknown>(args: RunPluginArgs): Promise<
             (ms: number) => sleep(ms, args.signal),
             args.signal,
             args.onDelta,
+            pluginFetch,
         );
     } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") throw error;

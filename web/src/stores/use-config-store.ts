@@ -119,7 +119,7 @@ export const defaultConfig: AiConfig = {
     background: "",
     count: "1",
     canvasImageCount: "3",
-    proxyEnabled: false,
+    proxyEnabled: true,
     proxyUrl: DEFAULT_LOCAL_PROXY_URL,
 };
 
@@ -477,7 +477,20 @@ export function buildApiUrl(baseUrl: string, path: string) {
     const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, "");
     const lowerBaseUrl = normalizedBaseUrl.toLowerCase();
     const apiBaseUrl = lowerBaseUrl.endsWith("/v1") ? normalizedBaseUrl : `${normalizedBaseUrl}/v1`;
-    return withLocalProxy(`${apiBaseUrl}${path}`);
+    return withApiLocalProxy(`${apiBaseUrl}${path}`);
+}
+
+function isProxiedApiHost(url: string) {
+    try {
+        return new URL(url).hostname.replace(/^www\./i, "").toLowerCase() === "image.52token.org";
+    } catch {
+        return false;
+    }
+}
+
+/** Only image.52token.org generation/model-list APIs skip browser CORS by going through the local proxy. */
+export function withApiLocalProxy(url: string) {
+    return isProxiedApiHost(url) ? withLocalProxy(url) : url;
 }
 
 export function normalizeLocalProxyUrl(value: string) {
@@ -486,7 +499,7 @@ export function normalizeLocalProxyUrl(value: string) {
     return /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
 }
 
-/** Prefix an outgoing request with the local forwarding proxy so the browser is not blocked by CORS. */
+/** Prefix a remote URL with the local forwarding proxy. Used as a fallback for media downloads and WebDAV. */
 export function withLocalProxy(url: string) {
     const { proxyEnabled, proxyUrl } = useConfigStore.getState().config;
     if (!proxyEnabled || !/^https?:\/\//i.test(url)) return url;

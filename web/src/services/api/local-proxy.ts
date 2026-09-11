@@ -1,5 +1,7 @@
 import i18n from "@/i18n";
-import { normalizeLocalProxyUrl } from "@/stores/use-config-store";
+import { normalizeLocalProxyUrl, withLocalProxy } from "@/stores/use-config-store";
+
+export const MEDIA_RESPONSE_ERROR = "MediaResponseError";
 
 /** The proxy answers its root path with its own identity payload, which doubles as a reachability check. */
 export async function testLocalProxy(proxyUrl: string) {
@@ -9,4 +11,68 @@ export async function testLocalProxy(proxyUrl: string) {
     const data = response.ok ? ((await response.json().catch(() => null)) as { proxy?: string; version?: string } | null) : null;
     if (!data?.proxy) throw new Error(i18n.t("config.proxy.unreachable"));
     return `${data.proxy} v${data.version || "?"}`;
+}
+
+/** Try the original URL first, then retry via the local proxy on CORS or network failure. Used by media downloads and WebDAV. */
+export async function requestMedia<T>(url: string, request: (url: string) => Promise<T>): Promise<T> {
+    if (!/^https?:\/\//i.test(url)) return request(url);
+    try {
+        return await request(url);
+    } catch (error) {
+        if (isAbortError(error)) throw error;
+        const proxied = withLocalProxy(url);
+        if (proxied === url) throw error;
+        try {
+            return await request(proxied);
+        } catch (proxyError) {
+            if (isAbortError(proxyError) || !isCorsOrNetworkError(proxyError)) throw proxyError;
+            throw error;
+        }
+    }
+}
+
+export async function fetchMediaBlob(url: string, init?: RequestInit): Promise<Blob> {
+    return requestMedia(url, async (next) => {
+        const response = await fetch(next, { ...init, referrerPolicy: "no-referrer" });
+        const blob = await response.blob();
+        if (!response.ok || isBlockedMediaBlob(blob, response.headers.get("content-type"))) {
+            throw mediaResponseError(response.status);
+        }
+        return blob;
+    });
+}
+
+export function isBlockedMediaType(contentType?: string | null) {
+    const type = (contentType || "").split(";")[0].trim().toLowerCase();
+    if (!type || /^(image|video|audio)\//.test(type) || type === "application/octet-stream") return false;
+    return /html|json|text\/plain|xml/.test(type);
+}
+
+function isBlockedMediaBlob(blob: Blob, contentType?: string | null) {
+    return isBlockedMediaType(blob.type || contentType);
+}
+
+export function mediaResponseError(status: number) {
+    const error = new Error(status >= 400 ? `HTTP ${status}` : i18n.t("common.mediaDownloadFailed"));
+    error.name = MEDIA_RESPONSE_ERROR;
+    return error;
+}
+
+function isCorsOrNetworkError(error: unknown) {
+    if (hasHttpResponse(error) || isAbortError(error)) return false;
+    if (error instanceof TypeError) return true;
+    if (error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "ERR_NETWORK") return true;
+    const message = error instanceof Error ? error.message : String(error || "");
+    return /failed to fetch|network error|load failed/i.test(message);
+}
+
+function hasHttpResponse(error: unknown) {
+    return Boolean(error && typeof error === "object" && "response" in error && (error as { response?: unknown }).response);
+}
+
+function isAbortError(error: unknown) {
+    if (error instanceof DOMException && error.name === "AbortError") return true;
+    if (error instanceof Error && (error.name === "AbortError" || error.name === "CanceledError" || error.name === "TimeoutError")) return true;
+    if (error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "ERR_CANCELED") return true;
+    return false;
 }

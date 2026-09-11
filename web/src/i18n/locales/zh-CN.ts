@@ -27,6 +27,7 @@ export default {
         durationMinutes: "{{minutes}}分{{seconds}}秒",
         durationSeconds: "{{seconds}}秒",
         imageReadFailed: "读取图片失败",
+        mediaDownloadFailed: "下载结果失败",
     },
     settingsPanels: {
         common: { auto: "自动", low: "低", medium: "中", high: "高", xhigh: "极高" },
@@ -383,11 +384,11 @@ export default {
         },
         proxy: {
             title: "本地代理",
-            description: "开启后，拉取模型列表、生图、生视频、生成文本、生成音频和 WebDAV 同步等请求都会先发给本机代理再转发出去，用来绕开浏览器跨域限制。",
+            description: "用于远程图片、视频、音频下载和 WebDAV 同步，包含调用脚本里拉取结果文件。请求会先直连原地址，遇到跨域、防盗链或非媒体响应时再回退到本机代理。拉取模型和生成接口默认浏览器直连，仅 image.52token.org 在代理开启时自动走本机代理。",
             startHint: "先在终端运行下面的命令，并在使用画布期间保持运行：",
             address: "代理地址",
             addressDescription: "需要和上面命令启动后打印的地址一致。",
-            channelHint: "渠道和 WebDAV 仍填写真实地址，不要填代理地址；关闭开关即可恢复直连。",
+            channelHint: "渠道和 WebDAV 仍填写真实地址，不要填代理地址。开关控制结果文件下载、WebDAV 回退，以及 image.52token.org 的模型拉取和生成转发，使用期间请保持代理进程运行。",
             test: "测试连接",
             available: "本地代理连接正常（{{proxy}}）",
             missingUrl: "请先填写本地代理地址。",
@@ -577,7 +578,7 @@ export default {
         },
         webdav: {
             title: "WebDAV 同步",
-            description: "同步画布、我的资产、生成记录和本地媒体文件，不包含 AI API Key。开启本地代理时经本机代理转发，否则浏览器直连 WebDAV。",
+            description: "同步画布、我的资产、生成记录和本地媒体文件，不包含 AI API Key。先直连 WebDAV，遇到跨域或网络失败时再回退本机代理。",
             lastSynced: "上次同步 {{time}}",
             neverSynced: "尚未同步",
             url: "WebDAV 地址",

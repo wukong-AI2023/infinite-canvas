@@ -27,6 +27,7 @@ export default {
         durationMinutes: "{{minutes}}m {{seconds}}s",
         durationSeconds: "{{seconds}}s",
         imageReadFailed: "Failed to read image",
+        mediaDownloadFailed: "Failed to download the result",
     },
     settingsPanels: {
         common: { auto: "Auto", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high" },
@@ -383,11 +384,11 @@ export default {
         },
         proxy: {
             title: "Local proxy",
-            description: "Forward provider requests (models, image, video, text, audio) and WebDAV sync through a proxy running on your machine to avoid browser CORS errors.",
+            description: "Used when downloading remote images, videos, and audio, including result files fetched inside call scripts, and for WebDAV. Requests go direct first and retry through the local proxy on CORS, hotlink blocks, or non-media responses. Model lists and generation APIs stay direct, except image.52token.org which automatically uses the local proxy when it is on.",
             startHint: "Run this in a terminal first, and keep it running while you use the canvas:",
             address: "Proxy address",
             addressDescription: "Must match the address printed by the command above.",
-            channelHint: "Keep the real endpoint in Providers and WebDAV — never the proxy address. Turning the switch off restores direct requests.",
+            channelHint: "Keep the real endpoint in Providers and WebDAV — never the proxy address. The switch controls result-file download, WebDAV fallback, and image.52token.org model/generation forwarding; keep the proxy process running while you use it.",
             test: "Test connection",
             available: "Local proxy is reachable ({{proxy}})",
             missingUrl: "Enter the local proxy address first.",
@@ -577,7 +578,7 @@ export default {
         },
         webdav: {
             title: "WebDAV sync",
-            description: "Sync canvases, assets, generation history, and local media files. AI API keys are excluded. Requests go through the local proxy when it is on; otherwise the browser connects to WebDAV directly.",
+            description: "Sync canvases, assets, generation history, and local media files. AI API keys are excluded. WebDAV goes direct first and falls back to the local proxy on CORS or network failure.",
             lastSynced: "Last synced {{time}}",
             neverSynced: "Not synced yet",
             url: "WebDAV URL",

@@ -2,6 +2,23 @@
 setlocal
 title KongCanvas
 
+cd /d "%~dp0"
+if errorlevel 1 (
+    echo Failed to enter the KongCanvas directory.
+    pause
+    exit /b 1
+)
+
+where node >nul 2>&1
+if errorlevel 1 (
+    echo Node.js is not installed or is not available in PATH.
+    pause
+    exit /b 1
+)
+
+echo Starting KongCanvas local proxy...
+start "KongCanvas Proxy" /b node "%~dp0canvas-proxy\index.js" --host 127.0.0.1 --port 23210
+
 cd /d "%~dp0web"
 if errorlevel 1 (
     echo Failed to enter the web directory.
