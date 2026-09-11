@@ -161,6 +161,11 @@ export function ensureAssetImageThumbnail(assetId: string) {
                 return;
             }
             useAssetStore.getState().updateAsset(assetId, { coverUrl: thumb.url, coverStorageKey: thumb.storageKey });
+        } catch {
+            const latest = useAssetStore.getState().assets.find((item) => item.id === assetId);
+            if (latest?.kind === "image" && latest.coverStorageKey === undefined) {
+                useAssetStore.getState().updateAsset(assetId, { coverStorageKey: latest.data.storageKey || "", coverUrl: latest.coverUrl || latest.data.dataUrl });
+            }
         } finally {
             releaseThumbnailSlot();
         }
