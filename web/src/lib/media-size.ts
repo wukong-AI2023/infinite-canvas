@@ -99,9 +99,11 @@ export function readMediaDimensions(size: string, scale: string, ratio: string) 
     return parsePixelSize(computed) || { width: 0, height: 0 };
 }
 
-export function clampVideoSeconds(value: string) {
+export function clampVideoSeconds(value: string, min = VIDEO_SECONDS_MIN, max = VIDEO_SECONDS_MAX) {
     const seconds = Math.floor(Number(value) || 6);
-    return String(Math.max(VIDEO_SECONDS_MIN, Math.min(VIDEO_SECONDS_MAX, seconds)));
+    const low = Math.min(min, max);
+    const high = Math.max(min, max);
+    return String(Math.max(low, Math.min(high, seconds)));
 }
 
 export function parseVideoResolution(value: string | undefined) {
@@ -110,6 +112,12 @@ export function parseVideoResolution(value: string | undefined) {
     if (raw === "auto" || raw === "high" || raw === "medium") return "720";
     const number = raw.replace(/p$/i, "");
     return /^\d+$/.test(number) && Number(number) > 0 ? number : "720";
+}
+
+export function parseVideoResolutionPixels(value: string | undefined) {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "2k") return "2048";
+    return parseVideoResolution(value);
 }
 
 export function inferVideoRatio(size: string) {
@@ -132,7 +140,7 @@ export function computeVideoSize(resolution: string, ratio: string) {
     if (ratio === "auto" || !ratio) return "auto";
     const parsed = parseAspectRatio(ratio);
     if (!parsed) return "auto";
-    const p = Math.max(1, Math.floor(Number(parseVideoResolution(resolution)) || 720));
+    const p = Math.max(1, Math.floor(Number(parseVideoResolutionPixels(resolution)) || 720));
     const landscape = parsed.width >= parsed.height;
     const width = evenRound(landscape ? (p * parsed.width) / parsed.height : p);
     const height = evenRound(landscape ? p : (p * parsed.height) / parsed.width);

@@ -9,9 +9,10 @@ import { useTranslation } from "react-i18next";
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
 import { ModelPicker } from "@/components/model-picker";
 import { PromptSelectDialog } from "@/components/prompts/prompt-select-dialog";
-import { VideoSettingsPanel, normalizeVideoResolutionValue, normalizeVideoSizeValue, videoModeLabel, videoSizeLabel } from "@/components/video-settings-panel";
+import { VideoSettingsPanel, normalizeVideoResolutionValue, normalizeVideoSizeValue, videoModeLabel, videoResolutionLabel, videoSizeLabel } from "@/components/video-settings-panel";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { clampVideoSeconds } from "@/lib/media-size";
+import { resolveVideoScriptSettings, scriptVideoResolution } from "@/lib/model-script-settings";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
 import { deleteStoredMedia, resolveMediaUrl } from "@/services/file-storage";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
@@ -443,7 +444,7 @@ export default function VideoPage() {
 
                             <div className="flex items-center justify-between rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm dark:border-stone-800 dark:bg-stone-900 sm:hidden">
                                 <span className="truncate text-stone-500 dark:text-stone-400">
-                                    {modelOptionLabel(effectiveConfig, model)} · {normalizeResolution(effectiveConfig.vquality)}p · {videoSizeLabel(effectiveConfig.size)} · {normalizeVideoSeconds(effectiveConfig.videoSeconds)}s · {videoModeLabel(effectiveConfig.videoMode)}
+                                    {modelOptionLabel(effectiveConfig, model)} · {videoResolutionLabel(effectiveConfig.vquality, resolveVideoScriptSettings(effectiveConfig, model))} · {videoSizeLabel(effectiveConfig.size)} · {normalizeVideoSeconds(effectiveConfig.videoSeconds)}s · {videoModeLabel(effectiveConfig.videoMode)}
                                 </span>
                                 <Button size="small" type="text" icon={<SlidersHorizontal className="size-4" />} onClick={() => setSettingsOpen(true)}>
                                     {t("workbench.adjust")}
@@ -519,7 +520,7 @@ function GenerationSettings({ config, model, updateConfig, openConfigDialog }: {
                 <ModelPicker config={config} value={model} onChange={(value) => updateConfig("videoModel", value)} capability="video" fullWidth onMissingConfig={() => openConfigDialog(false)} />
             </label>
             <div className="col-span-2">
-                <VideoSettingsPanel config={config} onConfigChange={(key, value) => updateConfig(key, value)} theme={theme} showTitle={false} className="space-y-4" />
+                <VideoSettingsPanel config={config} model={model} onConfigChange={(key, value) => updateConfig(key, value)} theme={theme} showTitle={false} className="space-y-4" />
             </div>
         </>
     );
@@ -640,7 +641,7 @@ function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: Ge
                     <div className="truncate text-sm font-semibold leading-5">{log.title}</div>
                     <div className="mt-2 flex flex-wrap gap-1">
                         <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none">{log.size}</Tag>
-                        <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none">{log.resolution}p</Tag>
+                        <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none">{videoQualityTag(log.resolution)}</Tag>
                         <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none">{log.seconds}s</Tag>
                     </div>
                 </div>
@@ -690,7 +691,7 @@ async function normalizeLog(log: Partial<GenerationLog>): Promise<GenerationLog>
         references,
         durationMs: log.durationMs || 0,
         size: log.size || config.size || "",
-        resolution: normalizeResolution(log.resolution || config.vquality || ""),
+        resolution: keepVideoResolution(log.resolution || config.vquality || ""),
         seconds: log.seconds || config.videoSeconds || "",
         status: log.status || "success",
         task: log.task,
@@ -730,7 +731,7 @@ function normalizeLogConfig(log: Partial<GenerationLog>): GenerationLogConfig {
         model: log.config?.model || log.model || "",
         videoModel: log.config?.videoModel || log.model || "",
         size: log.config?.size || log.size || "",
-        vquality: normalizeResolution(log.config?.vquality || log.resolution || ""),
+        vquality: keepVideoResolution(log.config?.vquality || log.resolution || ""),
         videoSeconds: log.config?.videoSeconds || log.seconds || "",
         videoGenerateAudio: log.config?.videoGenerateAudio || "true",
         videoWatermark: log.config?.videoWatermark || "false",
@@ -743,7 +744,7 @@ function buildLog({ prompt, model, config, references, durationMs, status, task,
         model: config.model,
         videoModel: config.videoModel,
         size: config.size,
-        vquality: normalizeResolution(config.vquality),
+        vquality: keepVideoResolution(config.vquality),
         videoSeconds: config.videoSeconds,
         videoGenerateAudio: config.videoGenerateAudio,
         videoWatermark: config.videoWatermark,
@@ -770,22 +771,23 @@ function buildLog({ prompt, model, config, references, durationMs, status, task,
 }
 
 function buildVideoConfig(config: AiConfig, model: string): AiConfig {
+    const settings = resolveVideoScriptSettings(config, model);
     return {
         ...config,
         model,
         videoModel: model,
         size: normalizeVideoSize(config.size),
-        videoSeconds: normalizeVideoSeconds(config.videoSeconds),
-        vquality: normalizeResolution(config.vquality),
+        videoSeconds: normalizeVideoSeconds(config.videoSeconds, settings?.duration?.min, settings?.duration?.max),
+        vquality: scriptVideoResolution(config.vquality, settings) || normalizeResolution(config.vquality),
         videoGenerateAudio: String(boolConfig(config.videoGenerateAudio, true)),
         videoWatermark: String(boolConfig(config.videoWatermark, false)),
         videoMode: config.videoMode === "reference" ? "reference" : "frames",
     };
 }
 
-function normalizeVideoSeconds(value: string) {
+function normalizeVideoSeconds(value: string, min?: number, max?: number) {
     if (String(value).trim() === "-1") return "-1";
-    return clampVideoSeconds(value);
+    return clampVideoSeconds(value, min, max);
 }
 
 function normalizeVideoSize(value: string) {
@@ -794,6 +796,17 @@ function normalizeVideoSize(value: string) {
 
 function normalizeResolution(value: string) {
     return normalizeVideoResolutionValue(value);
+}
+
+function keepVideoResolution(value: string) {
+    const raw = String(value || "").trim();
+    if (!raw) return normalizeResolution(raw);
+    return /^\d+p?$/i.test(raw) || /^(low|auto|high|medium)$/i.test(raw) ? normalizeResolution(raw) : raw;
+}
+
+function videoQualityTag(value: string) {
+    const raw = String(value || "").trim();
+    return /^\d+$/.test(raw) ? `${raw}p` : raw || "720p";
 }
 
 function delay(ms: number) {

@@ -4,6 +4,7 @@ import { nanoid } from "nanoid";
 import i18n from "@/i18n";
 import { dataUrlToFile, readFileAsDataUrl } from "@/lib/image-utils";
 import { clampVideoSeconds, computeVideoSize, inferVideoRatio } from "@/lib/media-size";
+import { parseModelScriptSettings, scriptVideoResolution } from "@/lib/model-script-settings";
 import { getMediaBlob, resolveMediaUrl, uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
 import { boolConfig, buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelScript, type AiConfig } from "@/stores/use-config-store";
@@ -97,6 +98,7 @@ async function createPluginVideoTask(config: AiConfig, model: string, script: st
     const refs = await Promise.all(references.map((image) => imageToDataUrl(image)));
     const videos = await Promise.all((options?.videos || []).map((video) => referenceMediaToFile(video, "ref.mp4", "invalidReferenceVideo", options)));
     const audios = await Promise.all((options?.audios || []).map((audio) => referenceMediaToFile(audio, "ref.mp3", "invalidReferenceAudio", options)));
+    const scriptSettings = parseModelScriptSettings(script);
     const result = videoPluginResult(
         await runModelPlugin({
             capability: "video",
@@ -107,9 +109,9 @@ async function createPluginVideoTask(config: AiConfig, model: string, script: st
             videos,
             audios,
             params: {
-                seconds: normalizeVideoSeconds(config.videoSeconds),
+                seconds: normalizeVideoSeconds(config.videoSeconds, scriptSettings?.duration?.min, scriptSettings?.duration?.max),
                 size: normalizeVideoSize(config.size, config.vquality),
-                resolution: normalizeVideoResolution(config.vquality),
+                resolution: scriptVideoResolution(config.vquality, scriptSettings) || normalizeVideoResolution(config.vquality),
                 ratio: videoAspectRatio(config.size),
                 generateAudio: boolConfig(config.videoGenerateAudio, true),
                 watermark: boolConfig(config.videoWatermark, false),
@@ -306,8 +308,8 @@ async function referenceMediaToFile(item: { name: string; type?: string; url?: s
     return new File([blob], item.name || fallbackName, { type: item.type || blob.type || "application/octet-stream" });
 }
 
-function normalizeVideoSeconds(value: string) {
-    return clampVideoSeconds(value);
+function normalizeVideoSeconds(value: string, min?: number, max?: number) {
+    return clampVideoSeconds(value, min, max);
 }
 
 function resolveVideoMode(mode: string | undefined, imageCount: number) {
