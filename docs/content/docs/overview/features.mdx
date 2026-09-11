@@ -24,7 +24,8 @@ description: Major features available in the current project
 - Limit canvas zoom to a minimum of `25%`, use a dotted grid for new canvases, and preserve each canvas's saved grid style when reopened.
 - Use `236px` as the default short edge for image and video nodes, keep text nodes at `236px` high, and default image/video ratio settings to automatic while preserving node center when ratios change.
 - Gracefully fall back to thread-summary reads when the local Codex app-server rejects paginated `thread/read(includeTurns=true)` requests.
-- Use a `228px` node creation menu and label panorama nodes as `360°全景查看器`; keep prompt panels at `638px × 258px` and provide canvas/project actions through the left toolbar with unified tooltips.
+- Use a `228px` node creation menu and label panorama nodes as `360°全景查看器`; keep prompt panels at `638px × 258px` with 16px corners, and keep node frames at 20px at 100% zoom.
+- Provide canvas/project actions through the left toolbar with unified tooltips.
 
 ## Nodes and workflows
 
@@ -32,6 +33,8 @@ description: Major features available in the current project
 - Connect text prompts and reference media to generation nodes.
 - Generate or rewrite text, create images, edit images from references, and create videos.
 - Preserve original image ratios by default and organize batch results as connected nodes.
+- Expand multi-image or multi-text batches two cards per row, with the primary card on the last row so the prompt panel stays visible.
+- Hide the on-image download chip while an image is collapsed; after expanding, show icon-only overlay chips at 80% opacity, with a 50% wider count chip.
 - Record prompts, models, dimensions, quality, and references on generated nodes for retries.
 
 ## AI generation
@@ -40,6 +43,7 @@ description: Major features available in the current project
 - Configure multiple channels, fetch or enter model names, and choose default text, image, and video models.
 - Support image count, aspect ratio, quality, transparent backgrounds, reasoning effort, and custom invocation scripts.
 - Support OpenAI-style video endpoints.
+- Keep image and video nodes at the current-ratio default size during and after generation (`236px × 236px` for images, `420px × 236px` for videos; chosen ratios keep a `236px` short edge) instead of shrinking to the media's native pixels.
 
 ## Canvas Agent
 
@@ -65,9 +69,11 @@ See [Third-party Prompt Sources](/docs/overview/third-party-prompt-repositories)
 
 ## Configuration and synchronization
 
-- Export and import channel, model, generation, prompt-source, and WebDAV settings.
+- Export and import channel, model, generation, prompt-source, local-proxy, and WebDAV settings.
 - Store application data and API credentials locally in the browser.
-- Use WebDAV for optional cross-device synchronization.
+- Use WebDAV for optional cross-device synchronization. WebDAV and remote media downloads go direct first and fall back to the local proxy on CORS, network failure, or non-media responses.
+- Provide a Local proxy tab between Providers and Preferences, on by default, with `npx @basketikun/canvas-proxy@latest` and `http://127.0.0.1:23210`. The Windows launcher starts this proxy automatically.
+- Keep model-list and generation requests browser-direct, except `image.52token.org`, which uses the local proxy when it is enabled. This is not a project backend proxy.
 
 ## Current limitations
 
