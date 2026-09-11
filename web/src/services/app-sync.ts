@@ -270,7 +270,8 @@ async function uploadChangedFiles<T>(config: WebdavSyncConfig, domain: DomainKey
 async function hydrateAsset(asset: Asset): Promise<Asset> {
     if (asset.kind === "image" && asset.data.storageKey) {
         const dataUrl = await resolveImageUrl(asset.data.storageKey, asset.data.dataUrl);
-        return { ...asset, coverUrl: asset.coverUrl.startsWith("blob:") ? dataUrl : asset.coverUrl, data: { ...asset.data, dataUrl } };
+        const coverUrl = asset.coverStorageKey ? await resolveImageUrl(asset.coverStorageKey, asset.coverUrl) : asset.coverUrl.startsWith("blob:") ? dataUrl : asset.coverUrl;
+        return { ...asset, coverUrl, data: { ...asset.data, dataUrl } };
     }
     if (asset.kind === "video" && asset.data.storageKey) {
         const url = await resolveMediaUrl(asset.data.storageKey, asset.data.url);

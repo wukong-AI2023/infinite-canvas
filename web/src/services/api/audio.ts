@@ -4,7 +4,7 @@ import i18n from "@/i18n";
 import { audioMimeType, normalizeAudioFormatValue, normalizeAudioSpeedValue, normalizeAudioVoiceValue } from "@/lib/audio-generation";
 import { uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { buildApiUrl, resolveModelRequestConfig, resolveModelScript, type AiConfig } from "@/stores/use-config-store";
-import { fetchMediaBlob } from "./local-proxy";
+import { axiosDirectThenProxy, fetchMediaBlob } from "./local-proxy";
 import { runModelPlugin } from "./model-plugin";
 
 type RequestOptions = { signal?: AbortSignal };
@@ -48,9 +48,10 @@ export async function requestAudioGeneration(config: AiConfig, prompt: string, o
     const instructions = config.audioInstructions.trim();
 
     try {
-        const response = await axios.post<Blob>(
-            aiApiUrl(requestConfig, "/audio/speech"),
-            {
+        const response = await axiosDirectThenProxy<Blob>({
+            method: "post",
+            url: aiApiUrl(requestConfig, "/audio/speech"),
+            data: {
                 model,
                 input: prompt,
                 voice: normalizeAudioVoiceValue(config.audioVoice),
@@ -58,8 +59,10 @@ export async function requestAudioGeneration(config: AiConfig, prompt: string, o
                 speed: Number(normalizeAudioSpeedValue(config.audioSpeed)),
                 ...(instructions ? { instructions } : {}),
             },
-            { headers: aiHeaders(requestConfig), responseType: "blob", signal: options?.signal },
-        );
+            headers: aiHeaders(requestConfig),
+            responseType: "blob",
+            signal: options?.signal,
+        });
         await assertAudioBlob(response.data);
         return response.data.type.startsWith("audio/") ? response.data : new Blob([response.data], { type: audioMimeType(format) });
     } catch (error) {

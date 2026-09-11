@@ -1,8 +1,8 @@
 import axios, { type AxiosRequestConfig } from "axios";
 
 import i18n from "@/i18n";
-import { buildApiUrl, withApiLocalProxy, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
-import { isBlockedMediaType, mediaResponseError, requestMedia } from "./local-proxy";
+import { buildApiUrl, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
+import { isBlockedMediaType, mediaResponseError, requestDirectThenProxy, requestMedia } from "./local-proxy";
 
 type RequestOptions = { signal?: AbortSignal };
 
@@ -41,7 +41,7 @@ function pluginHeaders(extra?: Record<string, string>, hasJsonBody = false): Rec
 }
 
 function pluginUrl(config: AiConfig, path: string) {
-    if (/^https?:/i.test(path)) return withApiLocalProxy(path);
+    if (/^https?:/i.test(path)) return path;
     return buildApiUrl(config.baseUrl, path.startsWith("/") ? path : `/${path}`);
 }
 
@@ -70,7 +70,7 @@ async function pluginAxios(config: AiConfig, requestConfig: AxiosRequestConfig &
     if (isPluginMediaGet(url, requestConfig.method, typeof requestConfig.responseType === "string" ? requestConfig.responseType : undefined, config.baseUrl)) {
         return requestMedia(url, run);
     }
-    return run(url);
+    return requestDirectThenProxy(url, run);
 }
 
 function createPluginHttp(config: AiConfig, options?: RequestOptions): PluginHttp {
@@ -101,23 +101,18 @@ function createPluginRequest(config: AiConfig, options?: RequestOptions) {
     return (requestConfig: AxiosRequestConfig & { url: string }) => pluginAxios(config, requestConfig, options);
 }
 
-function rewriteFetchInput(input: RequestInfo | URL, url: string) {
-    const proxied = withApiLocalProxy(url);
-    if (proxied === url) return input;
-    return input instanceof Request ? new Request(proxied, input) : proxied;
-}
-
 function createPluginFetch(config: AiConfig, options?: RequestOptions): typeof fetch {
     return async (input, init) => {
         const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
         const method = init?.method || (input instanceof Request ? input.method : "GET");
-        const nextInput = rewriteFetchInput(input, url);
-        if (!isPluginMediaGet(url, method, undefined, config.baseUrl)) return fetch(nextInput, init);
-        return requestMedia(url, async (next) => {
-            const response = await fetch(next, { ...init, signal: init?.signal ?? options?.signal, referrerPolicy: init?.referrerPolicy || "no-referrer" });
-            if (!response.ok || isBlockedMediaType(response.headers.get("content-type"))) throw mediaResponseError(response.status);
+        const media = isPluginMediaGet(url, method, undefined, config.baseUrl);
+        const run = async (next: string) => {
+            const nextInput = input instanceof Request ? new Request(next, input) : next;
+            const response = await fetch(nextInput, { ...init, signal: init?.signal ?? options?.signal, ...(media ? { referrerPolicy: init?.referrerPolicy || "no-referrer" } : {}) });
+            if (media && (!response.ok || isBlockedMediaType(response.headers.get("content-type")))) throw mediaResponseError(response.status);
             return response;
-        });
+        };
+        return media ? requestMedia(url, run) : requestDirectThenProxy(url, run);
     };
 }
 

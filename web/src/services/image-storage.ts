@@ -24,6 +24,71 @@ const IMAGE_TIMEOUT_ERROR = "ImageTimeoutError";
 
 type ImageReadOptions = { signal?: AbortSignal };
 
+export const IMAGE_THUMBNAIL_MAX_EDGE = 360;
+
+export async function createImageThumbnail(source: { url?: string; storageKey?: string }): Promise<UploadedImage | null> {
+    const stored = source.storageKey ? await getImageBlob(source.storageKey) : null;
+    const blob = stored || (source.url ? await fetchImageBlob(source.url) : null);
+    if (!blob) return null;
+    const bitmap = await loadBitmap(blob);
+    if (!bitmap) return null;
+    const sourceWidth = "naturalWidth" in bitmap && bitmap.naturalWidth ? bitmap.naturalWidth : bitmap.width;
+    const sourceHeight = "naturalHeight" in bitmap && bitmap.naturalHeight ? bitmap.naturalHeight : bitmap.height;
+    const maxEdge = Math.max(sourceWidth, sourceHeight);
+    if (maxEdge <= IMAGE_THUMBNAIL_MAX_EDGE) {
+        closeBitmap(bitmap);
+        return null;
+    }
+    const scale = IMAGE_THUMBNAIL_MAX_EDGE / maxEdge;
+    const width = Math.max(1, Math.round(sourceWidth * scale));
+    const height = Math.max(1, Math.round(sourceHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+        closeBitmap(bitmap);
+        return null;
+    }
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(bitmap, 0, 0, width, height);
+    closeBitmap(bitmap);
+    const thumb = await canvasToJpeg(canvas, 0.8);
+    return thumb ? storeImage(thumb) : null;
+}
+
+function loadBitmap(blob: Blob) {
+    if (typeof createImageBitmap === "function") {
+        return createImageBitmap(blob).catch(() => loadImageBitmap(blob));
+    }
+    return loadImageBitmap(blob);
+}
+
+function loadImageBitmap(blob: Blob) {
+    return new Promise<HTMLImageElement | null>((resolve) => {
+        const url = URL.createObjectURL(blob);
+        const image = new Image();
+        image.onload = () => {
+            URL.revokeObjectURL(url);
+            resolve(image);
+        };
+        image.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve(null);
+        };
+        image.src = url;
+    });
+}
+
+function closeBitmap(image: ImageBitmap | HTMLImageElement) {
+    if ("close" in image) image.close();
+}
+
+function canvasToJpeg(canvas: HTMLCanvasElement, quality: number) {
+    return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+}
+
 export async function uploadImage(input: string | Blob, options?: ImageReadOptions): Promise<UploadedImage> {
     if (typeof input !== "string") return storeImage(input, options);
 
@@ -186,6 +251,7 @@ export async function cleanupUnusedImages(usedData: unknown) {
 export function collectImageStorageKeys(value: unknown, keys = new Set<string>()) {
     if (!value || typeof value !== "object") return keys;
     if ("storageKey" in value && typeof value.storageKey === "string" && value.storageKey.startsWith("image:")) keys.add(value.storageKey);
+    if ("coverStorageKey" in value && typeof value.coverStorageKey === "string" && value.coverStorageKey.startsWith("image:")) keys.add(value.coverStorageKey);
     Object.values(value).forEach((item) => (Array.isArray(item) ? item.forEach((child) => collectImageStorageKeys(child, keys)) : collectImageStorageKeys(item, keys)));
     return keys;
 }

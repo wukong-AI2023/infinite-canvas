@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { ModelPicker } from "@/components/model-picker";
 import { defaultConfig, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { CONFIG_NODE_LAYOUT_SIZE } from "@/constant/canvas";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
@@ -34,9 +35,21 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
     const hasAnyInput = Boolean(inputSummary.textCount || inputSummary.imageCount || inputSummary.videoCount || inputSummary.audioCount);
     const hasComposerContent = Boolean((node.metadata?.composerContent ?? node.metadata?.prompt ?? "").trim());
     const canGenerate = hasComposerContent || (mode === "audio" ? inputSummary.textCount > 0 : hasAnyInput);
+    const layoutScale = Math.min(node.width / CONFIG_NODE_LAYOUT_SIZE.width, node.height / CONFIG_NODE_LAYOUT_SIZE.height);
 
     return (
-        <div className="flex h-full w-full cursor-move flex-col px-3 pb-3 pt-7 text-sm" style={{ color: theme.node.text }} onWheel={(event) => event.stopPropagation()}>
+        <div className="h-full w-full overflow-hidden">
+        <div
+            className="flex cursor-move flex-col px-3 pb-3 pt-7 text-sm"
+            style={{
+                color: theme.node.text,
+                width: CONFIG_NODE_LAYOUT_SIZE.width,
+                height: CONFIG_NODE_LAYOUT_SIZE.height,
+                transform: `scale(${layoutScale})`,
+                transformOrigin: "top left",
+            }}
+            onWheel={(event) => event.stopPropagation()}
+        >
             <div className="mb-2 flex items-center justify-between gap-3">
                 <div className="shrink-0 text-sm font-semibold">{t("canvas.configNode.title")}</div>
                 <div className="cursor-default" onMouseDown={(event) => event.stopPropagation()}>
@@ -134,6 +147,7 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
                     )}
                 </span>
             </Button>
+        </div>
         </div>
     );
 }

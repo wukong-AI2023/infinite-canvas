@@ -1,4 +1,5 @@
 import i18n from "@/i18n";
+import axios, { type AxiosRequestConfig, type AxiosResponse } from "axios";
 import { normalizeLocalProxyUrl, withLocalProxy } from "@/stores/use-config-store";
 
 export const MEDIA_RESPONSE_ERROR = "MediaResponseError";
@@ -13,13 +14,15 @@ export async function testLocalProxy(proxyUrl: string) {
     return `${data.proxy} v${data.version || "?"}`;
 }
 
-/** Try the original URL first, then retry via the local proxy on CORS or network failure. Used by media downloads and WebDAV. */
-export async function requestMedia<T>(url: string, request: (url: string) => Promise<T>): Promise<T> {
+type ProxyRetry = (error: unknown) => boolean;
+
+/** Try the original URL first, then retry via the local proxy. Default: CORS / network errors only. */
+export async function requestDirectThenProxy<T>(url: string, request: (url: string) => Promise<T>, shouldRetry: ProxyRetry = isCorsOrNetworkError): Promise<T> {
     if (!/^https?:\/\//i.test(url)) return request(url);
     try {
         return await request(url);
     } catch (error) {
-        if (isAbortError(error)) throw error;
+        if (isAbortError(error) || !shouldRetry(error)) throw error;
         const proxied = withLocalProxy(url);
         if (proxied === url) throw error;
         try {
@@ -29,6 +32,15 @@ export async function requestMedia<T>(url: string, request: (url: string) => Pro
             throw error;
         }
     }
+}
+
+/** Media / WebDAV: retry on CORS, network, hotlink, or non-media responses. */
+export async function requestMedia<T>(url: string, request: (url: string) => Promise<T>): Promise<T> {
+    return requestDirectThenProxy(url, request, (error) => !isAbortError(error));
+}
+
+export async function axiosDirectThenProxy<T = unknown>(config: AxiosRequestConfig): Promise<AxiosResponse<T>> {
+    return requestDirectThenProxy(String(config.url || ""), (url) => axios.request<T>({ ...config, url }));
 }
 
 export async function fetchMediaBlob(url: string, init?: RequestInit): Promise<Blob> {

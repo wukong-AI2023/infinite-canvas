@@ -5,6 +5,10 @@ export function fitNodeSize(width: number, height: number, maxWidth = 640, maxHe
     return { width: w * scale, height: h * scale };
 }
 
+export function nodeSizeFromNatural(width: number, height: number, baseWidth: number, baseHeight: number) {
+    return nodeSizeFromRatio(`${Math.max(1, Math.round(width))}x${Math.max(1, Math.round(height))}`, baseWidth, baseHeight) || { width: baseWidth, height: baseHeight };
+}
+
 export function nodeSizeFromRatio(size: string, baseWidth: number, baseHeight: number) {
     const match = size?.match(/^(\d+)(?:x|:)(\d+)/);
     if (!match) return null;

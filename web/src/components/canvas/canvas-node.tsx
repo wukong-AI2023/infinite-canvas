@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ChevronRight, Copy, Download, Group, Image as ImageIcon, Music2, Puzzle, RefreshCw, SquarePlay, Star, Trash2 } from "lucide-react";
+import { ChevronRight, Copy, Download, Group, Image as ImageIcon, Music, Music2, Puzzle, RefreshCw, SquarePlay, Star, Trash2 } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
@@ -360,7 +360,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 <div
                     className={`relative h-full w-full rounded-[20px] ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
                     style={{
-                        background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
+                        background: isGroup ? theme.canvas.groupFill : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
                         borderRadius: NODE_FRAME_RADIUS_PX,
                         boxShadow: isGroupDropTarget ? `0 0 0 2px ${theme.node.activeStroke}66, inset 0 0 0 999px ${theme.node.activeStroke}10` : isActive ? `0 0 0 1px ${theme.node.activeStroke}55` : isRelated ? `0 0 0 1px ${theme.node.muted}55, 0 18px 48px rgba(0,0,0,.14)` : undefined,
                     }}
@@ -434,7 +434,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                     ) : null}
 
                     <div
-                        className={`pointer-events-none absolute inset-0 z-[65] rounded-[20px] border-2 ${isGroup ? "border-dashed" : "border-solid"}`}
+                        className="pointer-events-none absolute inset-0 z-[65] rounded-[20px] border-2 border-solid"
                         style={{ borderRadius: NODE_FRAME_RADIUS_PX, borderColor: isGroup ? (isGroupDropTarget || isActive ? theme.node.activeStroke : theme.node.stroke) : hasImageContent ? imageBorderColor : isActive ? theme.node.activeStroke : isRelated ? theme.node.muted : transparentBg ? "transparent" : theme.node.stroke }}
                     />
                 </div>
@@ -603,7 +603,7 @@ function TextContent({ node, theme, isEditingContent, textareaRef, mentionRefere
                 ) : primaryText ? (
                     <TextSlotStatus text={primaryText} />
                 ) : (
-                    <div className="p-4 font-mono" style={{ color: theme.node.placeholder }}>
+                    <div className="p-4 text-[20px] leading-7" style={{ color: theme.node.placeholder }}>
                         {t("canvas.node.editText")}
                     </div>
                 )}
@@ -703,19 +703,19 @@ function ImageNodeContent(props: NodeContentRendererProps) {
 }
 
 function EmptyImageContent({ theme }: NodeContentRendererProps) {
-    return <div className="flex h-full w-full items-center justify-center" style={{ color: theme.node.placeholder }}><ImageIcon className="size-11 opacity-35" strokeWidth={1.8} /></div>;
+    return <div className="flex h-full w-full items-center justify-center" style={{ color: theme.node.placeholder }}><ImageIcon className="size-[59px] opacity-35" strokeWidth={1.8} /></div>;
 }
 
 function VideoNodeContent({ node, theme }: NodeContentRendererProps) {
     if (!node.metadata?.content)
-        return <div className="flex h-full w-full items-center justify-center" style={{ color: theme.node.placeholder }}><SquarePlay className="size-11 opacity-35" strokeWidth={1.8} /></div>;
+        return <div className="flex h-full w-full items-center justify-center" style={{ color: theme.node.placeholder }}><SquarePlay className="size-[59px] opacity-35" strokeWidth={1.8} /></div>;
     return <video src={node.metadata.content} controls className="h-full w-full bg-black object-cover" data-canvas-video={node.id} data-canvas-no-zoom />;
 }
 
 function AudioNodeContent({ node, theme }: NodeContentRendererProps) {
     const { t } = useTranslation();
     if (!node.metadata?.content)
-        return <div className="flex h-full w-full items-center justify-center" style={{ color: theme.node.placeholder }}><Music2 className="size-11 opacity-35" strokeWidth={1.8} /></div>;
+        return <div className="flex h-full w-full items-center justify-center" style={{ color: theme.node.placeholder }}><Music className="size-[59px] opacity-35" strokeWidth={1.8} /></div>;
     return (
         <div className="flex h-full w-full flex-col justify-center gap-3 px-4" style={{ background: theme.node.fill, color: theme.node.text }}>
             <div className="flex min-w-0 items-center gap-2 text-sm opacity-70">

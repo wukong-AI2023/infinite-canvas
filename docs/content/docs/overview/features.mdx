@@ -64,6 +64,7 @@ Canvas plugins can contribute node types, rendering, inspectors, serialization, 
 - Add, edit, and remove custom standard JSON sources while retaining the last successful cache when refresh fails.
 - Search across enabled sources, filter by tags, inspect prompt details, copy prompts, and insert them into the canvas.
 - Store reusable images, videos, audio, and prompt assets in the browser.
+- Asset lists use 360px-long-edge JPEG covers instead of original 4K files; inserting onto the canvas still uses the original.
 
 See [Third-party Prompt Sources](/docs/overview/third-party-prompt-repositories) for the complete built-in list.
 
@@ -71,9 +72,9 @@ See [Third-party Prompt Sources](/docs/overview/third-party-prompt-repositories)
 
 - Export and import channel, model, generation, prompt-source, local-proxy, and WebDAV settings.
 - Store application data and API credentials locally in the browser.
-- Use WebDAV for optional cross-device synchronization. WebDAV and remote media downloads go direct first and fall back to the local proxy on CORS, network failure, or non-media responses.
+- Use WebDAV for optional cross-device synchronization. Model lists, generation, WebDAV, and remote media downloads go direct first and fall back to the local proxy on CORS or network failure; downloads can also fall back on hotlink blocks or non-media responses.
 - Provide a Local proxy tab between Providers and Preferences, on by default, with `npx @basketikun/canvas-proxy@latest` and `http://127.0.0.1:23210`. The Windows launcher starts this proxy automatically.
-- Keep model-list and generation requests browser-direct, except `image.52token.org`, which uses the local proxy when it is enabled. This is not a project backend proxy.
+- Turning the local proxy switch off keeps every request browser-direct. This is not a project backend proxy.
 
 ## Current limitations
 

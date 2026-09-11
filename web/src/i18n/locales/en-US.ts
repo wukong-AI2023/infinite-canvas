@@ -269,7 +269,7 @@ export default {
         },
         node: {
             node: "Node",
-            untitled: "Untitled node", renameHint: "Double-click to rename the node", group: "Group", nodeCount: "{{count}} nodes", generating: "Generating", failed: "Generation failed", retry: "Retry", missingPlugin: "Plugin missing", missingPluginDescription: "The plugin for node type “{{type}}” is not installed or enabled", generateImage: "Generate image from text", generate: "Generate", editText: "Double-click to edit text", emptyImage: "Empty image node", emptyVideo: "Empty video node", emptyAudio: "Empty audio node", audio: "Audio", batchExpanded: "Image group expanded", batchCollapsed: "Image group collapsed", textBatchExpanded: "Text alternatives expanded", textBatchCollapsed: "Text alternatives collapsed", createCopy: "Create copy", setPrimary: "Set as primary", setPrimaryText: "Set as primary",
+            untitled: "Untitled node", renameHint: "Double-click to rename the node", group: "Group", nodeCount: "{{count}} nodes", generating: "Generating", failed: "Generation failed", retry: "Retry", missingPlugin: "Plugin missing", missingPluginDescription: "The plugin for node type “{{type}}” is not installed or enabled", generateImage: "Generate image from text", generate: "Generate", editText: "Double-click to start editing...", emptyImage: "Empty image node", emptyVideo: "Empty video node", emptyAudio: "Empty audio node", audio: "Audio", batchExpanded: "Image group expanded", batchCollapsed: "Image group collapsed", textBatchExpanded: "Text alternatives expanded", textBatchCollapsed: "Text alternatives collapsed", createCopy: "Create copy", setPrimary: "Set as primary", setPrimaryText: "Set as primary",
         },
         videoFrames: { first: "Capture first frame", last: "Capture last frame", current: "Capture current frame", firstTitle: "{{name}} first frame", lastTitle: "{{name}} last frame", currentTitle: "{{name}} current frame", captured: "Image node created", failed: "Could not capture this frame. Try again." },
         sidePanel: {
@@ -385,11 +385,11 @@ export default {
         },
         proxy: {
             title: "Local proxy",
-            description: "Used when downloading remote images, videos, and audio, including result files fetched inside call scripts, and for WebDAV. Requests go direct first and retry through the local proxy on CORS, hotlink blocks, or non-media responses. Model lists and generation APIs stay direct, except image.52token.org which automatically uses the local proxy when it is on.",
+            description: "Used for model lists, generation, remote image/video/audio downloads, and WebDAV, including result files fetched inside call scripts. Requests go direct first and retry through the local proxy on CORS or network failure; downloads can also fall back on hotlink blocks or non-media responses. Turn the switch off to stay direct only.",
             startHint: "Run this in a terminal first, and keep it running while you use the canvas:",
             address: "Proxy address",
             addressDescription: "Must match the address printed by the command above.",
-            channelHint: "Keep the real endpoint in Providers and WebDAV — never the proxy address. The switch controls result-file download, WebDAV fallback, and image.52token.org model/generation forwarding; keep the proxy process running while you use it.",
+            channelHint: "Keep the real endpoint in Providers and WebDAV — never the proxy address. The switch only allows fallback after a failed direct request; turn it off to stay direct. Keep the proxy process running while you use it.",
             test: "Test connection",
             available: "Local proxy is reachable ({{proxy}})",
             missingUrl: "Enter the local proxy address first.",

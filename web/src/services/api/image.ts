@@ -2,6 +2,7 @@ import axios from "axios";
 
 import i18n from "@/i18n";
 import { buildApiUrl, resolveModelRequestConfig, resolveModelScript, type AiConfig, type ModelChannel } from "@/stores/use-config-store";
+import { axiosDirectThenProxy, requestDirectThenProxy } from "./local-proxy";
 import { normalizePluginImages, runModelPlugin } from "./model-plugin";
 import { nanoid } from "nanoid";
 import { dataUrlToFile } from "@/lib/image-utils";
@@ -286,8 +287,8 @@ function readApiErrorMessage(value: unknown): string {
             if (inner === value && typeof parsed === "object" && Object.keys(parsed).length === 0) return "";
             return inner;
         } catch {
-            // Detect HTML error pages.
-            if (/<[a-z][\s\S]*>/i.test(value)) return apiText("htmlError", { preview: `${value.slice(0, 80)}...` });
+            // HTML error pages have no API message; callers fall back to HTTP status.
+            if (/<[a-z][\s\S]*>/i.test(value)) return "";
             return value;
         }
     }
@@ -452,6 +453,7 @@ async function readFetchError(response: Response, fallback: string) {
     try {
         return responseErrorMessage(JSON.parse(text)) || readStatusError(response.status, fallback);
     } catch {
+        if (/<[a-z][\s\S]*>/i.test(text)) return readStatusError(response.status, fallback);
         return text.slice(0, 300) || readStatusError(response.status, fallback);
     }
 }
@@ -499,12 +501,12 @@ function consumeResponseStreamText(state: ResponseStreamState, text: string, onD
 }
 
 async function requestStreamingResponse(config: AiConfig, body: Record<string, unknown>, onDelta?: (text: string) => void, options?: RequestOptions): Promise<ToolResponseResult> {
-    const response = await fetch(aiApiUrl(config, "/responses"), {
+    const response = await requestDirectThenProxy(aiApiUrl(config, "/responses"), (url) => fetch(url, {
         method: "POST",
         headers: { ...aiHeaders(config, "application/json"), Accept: "text/event-stream" },
         body: JSON.stringify({ ...body, stream: true }),
         signal: options?.signal,
-    });
+    }));
     if (!response.ok) throw new Error(await readFetchError(response, apiText("requestFailed")));
     if (!response.body) {
         const payload = (await response.json()) as ResponseApiPayload;
@@ -606,12 +608,12 @@ function toGeminiToolOptions(tools: ResponseFunctionTool[], toolChoice: ToolChoi
 }
 
 async function requestGeminiStreamingResponse(config: AiConfig, body: Record<string, unknown>, onDelta?: (text: string) => void, options?: RequestOptions): Promise<ToolResponseResult> {
-    const response = await fetch(`${geminiApiUrl(config, "streamGenerateContent")}?alt=sse`, {
+    const response = await requestDirectThenProxy(`${geminiApiUrl(config, "streamGenerateContent")}?alt=sse`, (url) => fetch(url, {
         method: "POST",
         headers: geminiHeaders(config),
         body: JSON.stringify(body),
         signal: options?.signal,
-    });
+    }));
     if (!response.ok) throw new Error(await readFetchError(response, apiText("requestFailed")));
     if (!response.body) {
         const payload = (await response.json()) as GeminiPayload;
@@ -693,14 +695,16 @@ async function requestGeminiImagesOnce(config: AiConfig, prompt: string, referen
     for (const image of references) {
         parts.push(toGeminiImagePart(await imageToDataUrl(image)));
     }
-    const response = await axios.post<GeminiPayload>(
-        geminiApiUrl(config, "generateContent"),
-        {
+    const response = await axiosDirectThenProxy<GeminiPayload>({
+        method: "post",
+        url: geminiApiUrl(config, "generateContent"),
+        data: {
             ...toGeminiBody(config, [{ role: "user", content: prompt }], { generationConfig: { responseModalities: ["TEXT", "IMAGE"], ...resolveGeminiImageConfig(config) } }),
             contents: [{ role: "user", parts }],
         },
-        { headers: geminiHeaders(config), signal: options?.signal },
-    );
+        headers: geminiHeaders(config),
+        signal: options?.signal,
+    });
     return parseGeminiImagePayload(response.data);
 }
 
@@ -754,9 +758,10 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
     const requestSize = resolveRequestSize(quality, config.size);
     const background = normalizeBackground(config.background);
     try {
-        const response = await axios.post<ImageApiResponse>(
-            aiApiUrl(requestConfig, "/images/generations"),
-            {
+        const response = await axiosDirectThenProxy<ImageApiResponse>({
+            method: "post",
+            url: aiApiUrl(requestConfig, "/images/generations"),
+            data: {
                 model: requestConfig.model,
                 prompt: withSystemPrompt(requestConfig, prompt),
                 n,
@@ -767,11 +772,9 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
                 ...(/gpt-image/.test(requestConfig.model) ? {} : { response_format: "b64_json" }),
                 output_format: IMAGE_OUTPUT_FORMAT,
             },
-            {
-                headers: aiHeaders(requestConfig, "application/json"),
-                signal: options?.signal,
-            },
-        );
+            headers: aiHeaders(requestConfig, "application/json"),
+            signal: options?.signal,
+        });
         const images = await parseImagePayload(response.data);
         return images;
     } catch (error) {
@@ -838,7 +841,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     files.forEach((file) => formData.append(imageField, file));
 
     try {
-        const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { headers: aiHeaders(requestConfig), signal: options?.signal });
+        const response = await axiosDirectThenProxy<ImageApiResponse>({ method: "post", url: aiApiUrl(requestConfig, "/images/edits"), data: formData, headers: aiHeaders(requestConfig), signal: options?.signal });
         const images = await parseImagePayload(response.data);
         return images;
     } catch (error) {
@@ -887,14 +890,16 @@ export async function requestImageQuestion(config: AiConfig, messages: AiTextMes
 export async function fetchImageModels(config: Pick<AiConfig, "baseUrl" | "apiKey" | "apiFormat">) {
     try {
         if (config.apiFormat === "gemini") {
-            const response = await axios.get<GeminiPayload>(geminiApiUrl({ ...defaultGeminiConfig, ...config }), { headers: geminiHeaders({ ...defaultGeminiConfig, ...config }) });
+            const response = await axiosDirectThenProxy<GeminiPayload>({ method: "get", url: geminiApiUrl({ ...defaultGeminiConfig, ...config }), headers: geminiHeaders({ ...defaultGeminiConfig, ...config }) });
             validateGeminiPayload(response.data);
             return (response.data.models || [])
                 .map((model) => model.name?.replace(/^models\//, ""))
                 .filter((id): id is string => Boolean(id))
                 .sort((a, b) => a.localeCompare(b));
         }
-        const response = await axios.get<{ data?: Array<{ id?: string }>; error?: { message?: string } }>(buildApiUrl(config.baseUrl, "/models"), {
+        const response = await axiosDirectThenProxy<{ data?: Array<{ id?: string }>; error?: { message?: string } }>({
+            method: "get",
+            url: buildApiUrl(config.baseUrl, "/models"),
             headers: {
                 Authorization: `Bearer ${config.apiKey}`,
             },

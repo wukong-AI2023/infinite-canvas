@@ -18,7 +18,7 @@ import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "@/lib/canvas/canvas-image-data";
-import { fitNodeSize, nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
+import { nodeSizeFromNatural, nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { captureVideoFrame, type VideoFramePosition } from "@/lib/canvas/canvas-video-frame";
 import { App, Button, Modal } from "antd";
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "@/constant/canvas";
@@ -49,7 +49,7 @@ import { usePluginHost } from "@/pages/canvas/hooks/use-plugin-host";
 import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNode, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { exportCanvasProjects } from "@/lib/canvas/canvas-export";
 import { applyNodeConfigPatch, audioMetadata, buildAudioGenerationMetadata, buildImageGenerationMetadata, createCanvasNode, imageMetadata, videoMetadata } from "@/lib/canvas/canvas-node-factory";
-import { applyGroupSelection, applyUngroupSelection, canGroupSelectedNodes, canUngroupSelectedNodes, collectGroupMemberNodes, findContainingGroupId, findGroupDropTarget, getConnectionTargetAnchor, getGroupWrapRect, normalizeConnection, snapNodesIntoGroup } from "@/lib/canvas/canvas-node-geometry";
+import { applyGroupSelection, applyUngroupSelection, canGroupSelectedNodes, canUngroupSelectedNodes, collectGroupMemberNodes, findContainingGroupId, findGroupDropTarget, getConnectionTargetAnchor, getGroupWrapRect, nodeBounds, normalizeConnection, snapNodesIntoGroup } from "@/lib/canvas/canvas-node-geometry";
 import {
     audioExtension,
     buildAngleLabel,
@@ -121,8 +121,6 @@ type CanvasGenerationRequest = {
     controller: AbortController;
 };
 
-const VIDEO_NODE_MAX_WIDTH = 420;
-const VIDEO_NODE_MAX_HEIGHT = 420;
 // Stable empty reference array prevents `... || []` from invalidating CanvasNode's React.memo on every render.
 const EMPTY_REFERENCES: CanvasResourceReference[] = [];
 const CONNECTION_HANDLE_HIT_RADIUS = 40;
@@ -1070,7 +1068,15 @@ function InfiniteCanvasPage() {
     }, [getCanvasCenter]);
 
     const resetViewport = useCallback(() => {
-        setViewport({ x: size.width / 2, y: size.height / 2, k: 1 });
+        const currentNodes = nodesRef.current;
+        let worldX = 0;
+        let worldY = 0;
+        if (currentNodes.length) {
+            const bounds = nodeBounds(currentNodes);
+            worldX = (bounds.left + bounds.right) / 2;
+            worldY = (bounds.top + bounds.bottom) / 2;
+        }
+        setViewport({ x: size.width / 2 - worldX, y: size.height / 2 - worldY, k: 1 });
         setContextMenu(null);
     }, [size.height, size.width]);
 
@@ -1445,7 +1451,8 @@ function InfiniteCanvasPage() {
 
     const createImageFileNode = useCallback(async (file: File, position: Position) => {
         const image = await uploadImage(file);
-        const size = fitNodeSize(image.width, image.height);
+        const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
+        const size = nodeSizeFromNatural(image.width, image.height, spec.width, spec.height);
         const id = `image-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const newNode: CanvasNodeData = {
             id,
@@ -1465,7 +1472,8 @@ function InfiniteCanvasPage() {
 
     const createVideoFileNode = useCallback(async (file: File, position: Position) => {
         const video = await uploadMediaFile(file, "video");
-        const size = fitNodeSize(video.width || 1280, video.height || 720, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
+        const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Video];
+        const size = nodeSizeFromNatural(video.width || 1280, video.height || 720, spec.width, spec.height);
         const id = `video-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         setNodes((prev) => [
             ...prev,
@@ -1781,7 +1789,8 @@ function InfiniteCanvasPage() {
             if (node?.type !== CanvasNodeType.Video || !node.metadata?.content || !video) return message.error(t("canvas.videoFrames.failed"));
             try {
                 const image = await uploadImage(await captureVideoFrame(node.metadata.content, position, video.currentTime));
-                const size = fitNodeSize(image.width, image.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
+                const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
+                const size = nodeSizeFromNatural(image.width, image.height, spec.width, spec.height);
                 const id = nanoid();
                 const x = node.position.x + node.width + 96;
                 let y = node.position.y + node.height / 2 - size.height / 2;
@@ -2028,7 +2037,8 @@ function InfiniteCanvasPage() {
         setUpscaleNodeId(null);
         const upscaled = await upscaleDataUrl(node.metadata.content, params);
         const image = await uploadImage(upscaled);
-        const size = fitNodeSize(image.width, image.height);
+        const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
+        const size = nodeSizeFromNatural(image.width, image.height, spec.width, spec.height);
         const childId = nanoid();
         const child: CanvasNodeData = {
             id: childId,
@@ -2159,7 +2169,8 @@ function InfiniteCanvasPage() {
                     setSelectedConnectionId(null);
                 } else if (first.type.startsWith("video/")) {
                     const video = await uploadMediaFile(first, "video");
-                    const nextSize = fitNodeSize(video.width || 1280, video.height || 720, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
+                    const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Video];
+                    const nextSize = nodeSizeFromNatural(video.width || 1280, video.height || 720, spec.width, spec.height);
                     setNodes((prev) =>
                         prev.map((node) =>
                             node.id === target.nodeId
@@ -2179,7 +2190,8 @@ function InfiniteCanvasPage() {
                     setSelectedConnectionId(null);
                 } else {
                     const image = await uploadImage(first);
-                    const s = fitNodeSize(image.width, image.height);
+                    const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
+                    const s = nodeSizeFromNatural(image.width, image.height, spec.width, spec.height);
                     setNodes((prev) =>
                         prev.map((node) =>
                             node.id === target.nodeId
@@ -2187,6 +2199,7 @@ function InfiniteCanvasPage() {
                                       ...node,
                                       type: CanvasNodeType.Image,
                                       title: first.name,
+                                      position: { x: node.position.x + node.width / 2 - s.width / 2, y: node.position.y + node.height / 2 - s.height / 2 },
                                       width: s.width,
                                       height: s.height,
                                       metadata: {
@@ -2666,8 +2679,9 @@ function InfiniteCanvasPage() {
                 const completedTexts = results.flatMap((item) => (item?.status === NODE_STATUS_SUCCESS ? [item] : []));
                 const failedTexts = results.filter((item) => item?.status === NODE_STATUS_ERROR);
                 const firstText = completedTexts[0];
+                const firstTextError = failedTexts[0]?.errorDetails || t("canvas.projectPage.generationFailed");
                 if (completedTexts.length <= 1) setExpandedBatchNodeIds((current) => new Set([...current].filter((id) => id !== rootId)));
-                if (failedTexts.length) message.error(firstText ? t("canvas.projectPage.partialTextFailed") : failedTexts[0]?.errorDetails || t("canvas.projectPage.generationFailed"));
+                if (failedTexts.length) message.error(firstText ? t("canvas.projectPage.partialTextFailed") : firstTextError);
                 setNodes((prev) =>
                     prev.map((node) => {
                         if (node.id === rootId) {
@@ -2680,11 +2694,11 @@ function InfiniteCanvasPage() {
                                     texts: completedTexts,
                                     primaryTextId: primaryText?.id,
                                     status: primaryText ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR,
-                                    errorDetails: primaryText ? undefined : t("canvas.projectPage.generationFailed"),
+                                    errorDetails: primaryText ? undefined : firstTextError,
                                 },
                             };
                         }
-                        return node.id === nodeId && isConfigNode ? { ...node, metadata: { ...node.metadata, status: firstText ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR, errorDetails: firstText ? undefined : t("canvas.projectPage.generationFailed") } } : node;
+                        return node.id === nodeId && isConfigNode ? { ...node, metadata: { ...node.metadata, status: firstText ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR, errorDetails: firstText ? undefined : firstTextError } } : node;
                     }),
                 );
             } catch (error) {
@@ -2924,7 +2938,8 @@ function InfiniteCanvasPage() {
         async (image: CanvasAssistantImage) => {
             const storedImage = image.storageKey ? { url: image.dataUrl, storageKey: image.storageKey, width: 1, height: 1, bytes: 0, mimeType: "image/png" } : await uploadImage(image.dataUrl);
             const meta = storedImage.width === 1 && storedImage.height === 1 ? await readImageMeta(storedImage.url) : storedImage;
-            const config = fitNodeSize(meta.width, meta.height);
+            const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
+            const config = nodeSizeFromNatural(meta.width, meta.height, spec.width, spec.height);
             const center = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
             const id = `image-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
             const node: CanvasNodeData = {
@@ -2968,7 +2983,7 @@ function InfiniteCanvasPage() {
                 const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Video];
                 const center = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
                 const id = `video-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-                const nextSize = fitNodeSize(payload.width || spec.width, payload.height || spec.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
+                const nextSize = nodeSizeFromNatural(payload.width || spec.width, payload.height || spec.height, spec.width, spec.height);
                 setNodes((prev) => [
                     ...prev,
                     {

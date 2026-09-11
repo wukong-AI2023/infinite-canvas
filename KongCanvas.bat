@@ -16,8 +16,44 @@ if errorlevel 1 (
     exit /b 1
 )
 
+echo Checking Codex node_repl path...
+node "%~dp0repair-codex-node-repl.mjs"
 echo Starting KongCanvas local proxy...
 start "KongCanvas Proxy" /b node "%~dp0canvas-proxy\index.js" --host 127.0.0.1 --port 23210
+
+echo Starting KongCanvas local agent...
+netstat -ano | findstr ":17371" | findstr "LISTENING" >nul 2>&1
+if not errorlevel 1 (
+    echo KongCanvas local agent already running on 17371.
+    goto start_web
+)
+if not exist "%~dp0canvas-agent\node_modules\" (
+    echo Installing canvas-agent dependencies...
+    pushd "%~dp0canvas-agent"
+    call npm install
+    if errorlevel 1 (
+        echo canvas-agent dependency installation failed.
+        popd
+        pause
+        exit /b 1
+    )
+    popd
+)
+if not exist "%~dp0canvas-agent\dist\index.js" (
+    echo Building canvas-agent...
+    pushd "%~dp0canvas-agent"
+    call npm run build
+    if errorlevel 1 (
+        echo canvas-agent build failed.
+        popd
+        pause
+        exit /b 1
+    )
+    popd
+)
+start "KongCanvas Agent" /b node "%~dp0canvas-agent\dist\index.js"
+
+:start_web
 
 cd /d "%~dp0web"
 if errorlevel 1 (
