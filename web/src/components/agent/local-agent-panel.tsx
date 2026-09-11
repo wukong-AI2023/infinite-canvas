@@ -6,11 +6,13 @@ import { Bot, History, MessageSquare, PanelRightClose, PlugZap, Plus, Sparkles, 
 import { useTranslation } from "react-i18next";
 
 import i18n from "@/i18n";
+import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
+import { CanvasNodeType } from "@/types/canvas";
 import { readAgentUrlBootstrap } from "@/lib/agent/agent-url-bootstrap";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { upscaleDataUrl } from "@/lib/canvas/canvas-image-data";
 import { imageMetadata } from "@/lib/canvas/canvas-node-factory";
-import { fitNodeSize } from "@/lib/canvas/canvas-node-size";
+import { nodeSizeFromNatural } from "@/lib/canvas/canvas-node-size";
 import { resolveCanvasReferenceImages } from "@/lib/canvas/canvas-resource-references";
 import { readImageMeta } from "@/lib/image-utils";
 import { randomId } from "@/lib/utils";
@@ -1261,7 +1263,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 if (context) {
                     const right = Math.max(0, ...context.snapshot.nodes.map((node) => node.position.x + node.width)) + 80;
                     const ops = generated.map<CanvasAgentOp>((image, index) => {
-                        const size = fitNodeSize(image.upload.width, image.upload.height);
+                        const size = imageNodeSize(image.upload.width, image.upload.height);
                         return {
                             type: "add_node",
                             id: `image-${createId()}`,
@@ -1516,6 +1518,11 @@ function approvalActivity(pendingApprovals: AgentPendingApproval[], waiting: boo
     return waiting ? rt("codexRunning") : fallback;
 }
 
+function imageNodeSize(width: number, height: number) {
+    const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
+    return nodeSizeFromNatural(width, height, spec.width, spec.height);
+}
+
 async function attachmentNodeOps(endpoint: string, token: string, clientId: string, value: unknown): Promise<CanvasAgentOp[]> {
     const nodes = Array.isArray(value) ? value : [];
     if (!nodes.length) throw new Error(rt("noImageAttachments"));
@@ -1531,7 +1538,7 @@ async function attachmentNodeOps(endpoint: string, token: string, clientId: stri
                 throw new Error(body?.error || rt("attachmentReadFailed"));
             }
             const image = await uploadImage(await res.blob());
-            const size = fitNodeSize(image.width, image.height);
+            const size = imageNodeSize(image.width, image.height);
             const position = item.position && typeof item.position === "object" ? (item.position as { x?: unknown; y?: unknown }) : {};
             return {
                 type: "add_node" as const,
