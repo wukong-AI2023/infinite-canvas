@@ -13,7 +13,7 @@ description: Major features available in the current project
 
 ## Infinite canvas
 
-- Pan, zoom, reset the view, select multiple nodes, copy and paste, undo and redo.
+- Pan, zoom, reset the view, select multiple nodes, copy and paste, undo and redo. Reset view keeps 100% zoom and pans so the bounding-box center of all nodes sits in the screen center; an empty canvas still returns to the origin.
 - Drag files onto the canvas and use lines, dots, or a blank background.
 - Export the entire canvas or selected elements with their resources.
 - Use Light, Dark, and Dark gray canvas themes. Dark gray uses a `#0a0a0a` canvas with `#464646` dots and remembers the previously selected dark theme when switching through Light.
@@ -22,7 +22,7 @@ description: Major features available in the current project
 - Follow the active theme in configuration-panel borders and dividers, and use a neutral `#7a7a7a` selection stroke across nodes, reference highlights, group drop targets, prompt references, and marquee selection.
 - Keep image generation counts as `1 / 2 / 4 / custom`, remember the latest model and parameters independently for each node type, and show an icon-only stop control while generating.
 - Limit canvas zoom to a minimum of `25%`, use a dotted grid for new canvases, and preserve each canvas's saved grid style when reopened.
-- Use `236px` as the default short edge for image and video nodes, keep text nodes at `236px` high, and default image/video ratio settings to automatic while preserving node center when ratios change.
+- Use `330px` as the default short edge for new image, video, audio, and generation-config nodes. New empty image and text nodes are `330px × 330px`; empty video and audio nodes are 16:9 with a `330px` short edge; generation-config nodes keep the original 340×240 ratio at about `468px × 330px` with inner controls scaled. Existing saved nodes do not resize automatically.
 - Gracefully fall back to thread-summary reads when the local Codex app-server rejects paginated `thread/read(includeTurns=true)` requests.
 - Use a `228px` node creation menu and label panorama nodes as `360°全景查看器`; keep prompt panels at `638px × 258px` with 16px corners, and keep node frames at 20px at 100% zoom.
 - Provide canvas/project actions through the left toolbar with unified tooltips.
@@ -30,6 +30,8 @@ description: Major features available in the current project
 ## Nodes and workflows
 
 - Text, image, video, and generation-configuration nodes.
+- Empty image, video, and audio nodes show a 59px type icon; audio uses a single note. Empty text nodes show a 20px “Double-click to start editing...” placeholder.
+- Grouped nodes use a fill 10% lower than the selection fill and a solid stroke.
 - Connect text prompts and reference media to generation nodes.
 - Generate or rewrite text, create images, edit images from references, and create videos.
 - Preserve original image ratios by default and organize batch results as connected nodes.
@@ -43,7 +45,9 @@ description: Major features available in the current project
 - Configure multiple channels, fetch or enter model names, and choose default text, image, and video models.
 - Support image count, aspect ratio, quality, transparent backgrounds, reasoning effort, and custom invocation scripts.
 - Support OpenAI-style video endpoints.
-- Keep image and video nodes at the current-ratio default size during and after generation (`236px × 236px` for images, `420px × 236px` for videos; chosen ratios keep a `236px` short edge) instead of shrinking to the media's native pixels.
+- Video call scripts can declare quality options and duration range with a `/* canvas-settings */` comment; models without the comment keep the default 480p / 720p / 1080p panel and 4–30 seconds.
+- Failed text generation shows the real API error; an HTML 404 page prompts checking the Base URL and selected model.
+- Keep image and video nodes at the current-ratio default size during and after generation (`330px × 330px` for images; 16:9 with a `330px` short edge for videos) instead of shrinking to the media's native pixels.
 
 ## Canvas Agent
 
@@ -73,7 +77,7 @@ See [Third-party Prompt Sources](/docs/overview/third-party-prompt-repositories)
 - Export and import channel, model, generation, prompt-source, local-proxy, and WebDAV settings.
 - Store application data and API credentials locally in the browser.
 - Use WebDAV for optional cross-device synchronization. Model lists, generation, WebDAV, and remote media downloads go direct first and fall back to the local proxy on CORS or network failure; downloads can also fall back on hotlink blocks or non-media responses.
-- Provide a Local proxy tab between Providers and Preferences, on by default, with `npx @basketikun/canvas-proxy@latest` and `http://127.0.0.1:23210`. The Windows launcher starts this proxy automatically.
+- Provide a Local proxy tab between Providers and Preferences, on by default, with `npx @basketikun/canvas-proxy@latest` and `http://127.0.0.1:23210`. The Windows launcher starts canvas-proxy and Canvas Agent (`127.0.0.1:17371`), and retargets a stale Codex `node_repl` path after a Codex update.
 - Turning the local proxy switch off keeps every request browser-direct. This is not a project backend proxy.
 
 ## Current limitations
