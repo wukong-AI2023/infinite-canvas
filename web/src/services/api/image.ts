@@ -9,6 +9,7 @@ import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { imageToDataUrl } from "@/services/image-storage";
 import { imageSizePresets, inferMediaScale } from "@/lib/media-size";
+import { imageScriptPanelRows, matchScriptResolution, parseModelScriptSettings, scriptImageQuality, scriptImageSize } from "@/lib/model-script-settings";
 import type { ReferenceImage } from "@/types/image";
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
@@ -188,6 +189,25 @@ function validateImageSize(width: number, height: number) {
     if (Math.max(width, height) / Math.min(width, height) > IMAGE_MAX_RATIO) throw new Error(apiText("imageRatioLimit"));
     const pixels = width * height;
     if (pixels < IMAGE_MIN_PIXELS || pixels > IMAGE_MAX_PIXELS) throw new Error(apiText("imagePixelLimit"));
+}
+
+function pluginImageParams(config: AiConfig, script: string) {
+    const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
+    const settings = parseModelScriptSettings(script);
+    const rows = imageScriptPanelRows(settings);
+    const quality = rows.quality
+        ? (settings?.quality?.length ? scriptImageQuality(config.quality, settings) || undefined : normalizeQuality(config.quality))
+        : undefined;
+    const size = settings?.size?.length
+        ? scriptImageSize(config.size, settings) || undefined
+        : settings?.resolution?.length
+            ? undefined
+            : resolveRequestSize(normalizeQuality(config.quality), config.size);
+    const resolution = settings?.resolution?.length
+        ? matchScriptResolution(settings.resolution, config.size)?.value || matchScriptResolution(settings.resolution, inferMediaScale(config.size))?.value
+        : undefined;
+    const background = rows.background ? normalizeBackground(config.background) : undefined;
+    return { size, quality, count: n, ...(resolution ? { resolution } : {}), ...(background ? { background } : {}) };
 }
 
 function resolveRequestSize(quality: string | undefined, size: string) {
@@ -729,9 +749,6 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const script = resolveModelScript(config, config.model || config.imageModel);
     if (script) {
-        const quality = normalizeQuality(config.quality);
-        const requestSize = resolveRequestSize(quality, config.size);
-        const background = normalizeBackground(config.background);
         try {
             const result = await runModelPlugin({
                 capability: "image",
@@ -739,7 +756,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
                 config: requestConfig,
                 prompt: withSystemPrompt(requestConfig, prompt),
                 images: [],
-                params: { size: requestSize, quality, count: n, ...(background ? { background } : {}) },
+                params: pluginImageParams(config, script),
                 signal: options?.signal,
             });
             return normalizePluginImages(result).map((dataUrl) => ({ id: nanoid(), dataUrl }));
@@ -788,9 +805,6 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const requestPrompt = buildImageReferencePromptText(prompt, references);
     const script = resolveModelScript(config, config.model || config.imageModel);
     if (script) {
-        const quality = normalizeQuality(config.quality);
-        const requestSize = resolveRequestSize(quality, config.size);
-        const background = normalizeBackground(config.background);
         const refs = await Promise.all(references.map((image) => imageToDataUrl(image)));
         try {
             const result = await runModelPlugin({
@@ -799,7 +813,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
                 config: requestConfig,
                 prompt: withSystemPrompt(requestConfig, requestPrompt),
                 images: refs,
-                params: { size: requestSize, quality, count: n, ...(background ? { background } : {}) },
+                params: pluginImageParams(config, script),
                 signal: options?.signal,
             });
             return normalizePluginImages(result).map((dataUrl) => ({ id: nanoid(), dataUrl }));

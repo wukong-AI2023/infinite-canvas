@@ -84,7 +84,7 @@ export function ModelScriptEditor({ open, capability, modelName, value, onSave, 
                         <div className="min-h-0 flex-1 overflow-y-scroll overscroll-contain p-0">
                             <StepBlock index={1} title={t("config.scriptEditor.stepRule")}>
                                 <p className="text-xs leading-5 text-stone-600 dark:text-stone-300">{t("config.scriptEditor.stepRuleHint")}</p>
-                                {capability === "video" ? <p className="mt-2 text-xs leading-5 text-stone-600 dark:text-stone-300">{t("config.scriptEditor.settingsHint")}</p> : null}
+                                {capability === "video" || capability === "image" ? <p className="mt-2 text-xs leading-5 text-stone-600 dark:text-stone-300">{t("config.scriptEditor.settingsHint")}</p> : null}
                                 <div className="mt-3">
                                     <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-stone-400">{t("config.scriptEditor.returnRequirements")}</div>
                                     <div className="text-xs leading-6 text-stone-600 dark:text-stone-300">{getPluginReturn(capability)}</div>

@@ -4,7 +4,8 @@ import { useTranslation } from "react-i18next";
 
 import i18n from "@/i18n";
 import { type CanvasTheme } from "@/lib/canvas-theme";
-import { computeMediaSize, inferMediaRatio, inferMediaScale, mediaRatioOptions, mediaScaleOptions, readMediaDimensions } from "@/lib/media-size";
+import { computeMediaSize, inferMediaRatio, inferMediaScale, mediaRatioOptions, mediaScaleOptions, normalizeMediaScale, parseAspectRatio, readMediaDimensions } from "@/lib/media-size";
+import { imageScriptPanelRows, matchScriptResolution, matchScriptSize, resolveImageScriptSettings, type ModelScriptSettings } from "@/lib/model-script-settings";
 import type { AiConfig } from "@/stores/use-config-store";
 
 const qualityOptions = [
@@ -21,6 +22,7 @@ export const imageScaleOptions = mediaScaleOptions.map((value) => ({ value, labe
 
 type ImageSettingsPanelProps = {
     config: AiConfig;
+    model?: string;
     onConfigChange: (key: "quality" | "size" | "count" | "background", value: string) => void;
     theme: CanvasTheme;
     showTitle?: boolean;
@@ -31,18 +33,43 @@ type ImageSettingsPanelProps = {
     countLabel?: (value: number) => ReactNode;
 };
 
-export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5", maxCount = 15, quickCount = 10, countOptions, countLabel }: ImageSettingsPanelProps) {
+export function ImageSettingsPanel({ config, model, onConfigChange, theme, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5", maxCount = 15, quickCount = 10, countOptions, countLabel }: ImageSettingsPanelProps) {
     const { t } = useTranslation();
     const [snapDimensionToStep, setSnapDimensionToStep] = useState(true);
-    const quality = config.quality || "auto";
+    const scriptSettings = resolveImageScriptSettings(config, model);
+    const rows = imageScriptPanelRows(scriptSettings);
+    const scriptQuality = scriptSettings?.quality;
+    const scriptResolution = scriptSettings?.resolution;
+    const scriptSize = scriptSettings?.size;
+    const quality = config.quality || (scriptQuality ? "" : "auto");
     const count = Math.max(1, Math.min(maxCount, Math.floor(Math.abs(Number(config.count)) || 1)));
     const activeSize = config.size || "auto";
     const transparentBackground = config.background === "transparent";
-    const selectedScale = inferMediaScale(activeSize);
-    const selectedRatio = inferMediaRatio(activeSize);
+    const inferredScale = inferMediaScale(activeSize);
+    const selectedScale = scriptResolution?.length
+        ? matchScriptResolution(scriptResolution, activeSize)?.value || matchScriptResolution(scriptResolution, inferredScale)?.value || inferredScale
+        : inferredScale;
+    const selectedRatio = scriptSize?.length
+        ? matchScriptSize(scriptSize, activeSize)?.value || (matchScriptResolution(scriptResolution, activeSize) ? "auto" : inferMediaRatio(activeSize))
+        : inferMediaRatio(activeSize);
     const dimensions = readMediaDimensions(activeSize, selectedScale, selectedRatio);
-    const applySize = (scale: string, ratio: string) => onConfigChange("size", computeMediaSize(scale, ratio));
-    const selectScale = (scale: string) => applySize(scale, selectedRatio === "auto" ? "1:1" : selectedRatio);
+    const scaleOptions = scriptResolution?.length
+        ? scriptResolution
+        : mediaScaleOptions.map((value) => ({ value, label: value === "auto" ? t("settingsPanels.common.auto") : value }));
+    const ratioOptions = scriptSize?.length
+        ? scriptSize.map((item) => {
+            const parsed = parseAspectRatio(item.value);
+            return { value: item.value, label: item.value === "auto" ? (item.label || t("settingsPanels.common.auto")) : item.label, width: parsed?.width || 0, height: parsed?.height || 0 };
+        })
+        : mediaRatioOptions.map((item) => ({ value: item.value, label: item.value === "auto" ? t("settingsPanels.common.auto") : item.value, width: item.width, height: item.height }));
+    const applySize = (scale: string, ratio: string) => {
+        if (scriptResolution?.length && (ratio === "auto" || !ratio)) {
+            onConfigChange("size", matchScriptResolution(scriptResolution, scale)?.value || "auto");
+            return;
+        }
+        onConfigChange("size", computeDeclaredImageSize(scale, ratio));
+    };
+    const selectScale = (scale: string) => applySize(scale, (!scriptResolution?.length && selectedRatio === "auto") ? "1:1" : selectedRatio);
     const selectRatio = (ratio: string) => applySize(selectedScale, ratio);
     const updateDimension = (key: "width" | "height", value: number | null) => {
         const next = Math.max(1, Math.floor(value || dimensions[key] || 1024));
@@ -63,16 +90,25 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 }}
             >
                 {showTitle ? <div className="text-lg font-semibold">{t("settingsPanels.image.title")}</div> : null}
+                {rows.quality ? (
                 <div className="space-y-2.5">
                     <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.quality")}</SettingTitle>
                     <div className="grid grid-cols-4 gap-2.5">
-                        {qualityOptions.map((item) => (
-                            <OptionPill key={item.value} selected={quality === item.value} theme={theme} onClick={() => onConfigChange("quality", item.value)}>
-                                {t(`settingsPanels.common.${item.labelKey}`)}
-                            </OptionPill>
-                        ))}
+                        {scriptQuality
+                            ? scriptQuality.map((item) => (
+                                <OptionPill key={item.value} selected={matchScriptResolution([item], config.quality)?.value === item.value} theme={theme} onClick={() => onConfigChange("quality", item.value)}>
+                                    {item.label}
+                                </OptionPill>
+                            ))
+                            : qualityOptions.map((item) => (
+                                <OptionPill key={item.value} selected={quality === item.value} theme={theme} onClick={() => onConfigChange("quality", item.value)}>
+                                    {t(`settingsPanels.common.${item.labelKey}`)}
+                                </OptionPill>
+                            ))}
                     </div>
                 </div>
+                ) : null}
+                {rows.size ? (
                 <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-3">
                         <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.size")}</SettingTitle>
@@ -91,20 +127,24 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                         <DimensionInput prefix="H" value={dimensions.height} disabled={selectedRatio === "auto"} theme={theme} alignToStep={snapDimensionToStep} onChange={(value) => updateDimension("height", value)} />
                     </div>
                 </div>
+                ) : null}
+                {rows.resolution ? (
                 <div className="space-y-2.5">
                     <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.resolution")}</SettingTitle>
                     <div className="grid grid-cols-4 gap-2.5">
-                        {mediaScaleOptions.map((value) => (
-                            <OptionPill key={value} selected={selectedScale === value} theme={theme} onClick={() => selectScale(value)}>
-                                {value === "auto" ? t("settingsPanels.common.auto") : value}
+                        {scaleOptions.map((item) => (
+                            <OptionPill key={item.value} selected={matchScriptResolution([item], selectedScale)?.value === item.value || selectedScale === item.value} theme={theme} onClick={() => selectScale(item.value)}>
+                                {item.label}
                             </OptionPill>
                         ))}
                     </div>
                 </div>
+                ) : null}
+                {rows.aspect ? (
                 <div className="space-y-2.5">
                     <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.aspectRatio")}</SettingTitle>
                     <div className="grid grid-cols-4 gap-2.5">
-                        {mediaRatioOptions.map((item) => (
+                        {ratioOptions.map((item) => (
                             <button
                                 key={item.value}
                                 type="button"
@@ -114,11 +154,13 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                                 onClick={() => selectRatio(item.value)}
                             >
                                 <AspectIcon width={item.width} height={item.height} color={theme.node.text} />
-                                <span>{item.value === "auto" ? t("settingsPanels.common.auto") : item.value}</span>
+                                <span>{item.label}</span>
                             </button>
                         ))}
                     </div>
                 </div>
+                ) : null}
+                {rows.background ? (
                 <div className="flex items-center justify-between gap-3">
                     <div className="space-y-0.5">
                         <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.transparent")}</SettingTitle>
@@ -130,6 +172,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                         <Switch size="small" checked={transparentBackground} onChange={(checked) => onConfigChange("background", checked ? "transparent" : "")} />
                     </span>
                 </div>
+                ) : null}
                 <div className="space-y-2.5">
                     <SettingTitle color={theme.node.muted}>{t("settingsPanels.image.count")}</SettingTitle>
                     <div className="grid grid-cols-4 gap-2.5">
@@ -162,16 +205,49 @@ export function ImageSettingsTheme({ theme, children }: { theme: CanvasTheme; ch
     );
 }
 
-export function imageQualityLabel(value: string) {
+export function imageQualityLabel(value: string, settings?: ModelScriptSettings) {
+    const matched = matchScriptResolution(settings?.quality, value);
+    if (matched) return matched.label === "auto" ? i18n.t("settingsPanels.common.auto") : matched.label;
     return (["auto", "high", "medium", "low"].includes(value) ? i18n.t(`settingsPanels.common.${value}`) : value);
 }
 
-export function imageSizeLabel(size: string) {
-    const scale = inferMediaScale(size);
-    const ratio = inferMediaRatio(size);
-    if (ratio === "auto" || size === "auto") return i18n.t("settingsPanels.common.auto");
-    if (scale === "auto") return ratio;
-    return `${scale} · ${ratio}`;
+export function imageSizeLabel(size: string, settings?: ModelScriptSettings) {
+    const matchedSize = matchScriptSize(settings?.size, size);
+    const matchedResolution = matchScriptResolution(settings?.resolution, size);
+    const scale = matchedResolution?.value || inferMediaScale(size);
+    const matchedScale = matchedResolution || matchScriptResolution(settings?.resolution, scale);
+    const ratio = matchedSize?.value || (matchedResolution ? "auto" : inferMediaRatio(size));
+    const autoRatio = ratio === "auto" || !size || size === "auto";
+    const ratioLabel = matchedSize && matchedSize.value !== "auto" ? (matchedSize.label || matchedSize.value) : (ratio === "auto" ? i18n.t("settingsPanels.common.auto") : ratio);
+    const scaleLabel = matchedScale?.label || (scale === "auto" ? i18n.t("settingsPanels.common.auto") : scale);
+    if (matchedResolution && autoRatio) return scaleLabel;
+    if (autoRatio) return i18n.t("settingsPanels.common.auto");
+    if (scale === "auto" && !matchedResolution) return ratioLabel;
+    return `${scaleLabel} · ${ratioLabel}`;
+}
+
+export function imageSettingsSummary(config: AiConfig, settings?: ModelScriptSettings) {
+    const rows = imageScriptPanelRows(settings);
+    const parts = [];
+    if (rows.quality) parts.push(imageQualityLabel(config.quality || (settings?.quality ? "" : "auto"), settings));
+    if (rows.size || rows.resolution || rows.aspect) parts.push(imageSizeLabel(config.size || "auto", settings));
+    parts.push(String(Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)))));
+    return parts.join(" · ");
+}
+
+function computeDeclaredImageSize(scale: string, ratio: string) {
+    if (ratio === "auto" || !ratio) return "auto";
+    const computed = computeMediaSize(scale, ratio);
+    if (computed) return computed;
+    const normalized = normalizeMediaScale(scale);
+    if (normalized === "auto") return ratio;
+    const parsed = parseAspectRatio(ratio);
+    if (!parsed) return ratio;
+    const longSide = normalized === "4k" ? 3840 : normalized === "2k" ? 2048 : 1024;
+    const landscape = parsed.width >= parsed.height;
+    const width = landscape ? longSide : Math.max(1, Math.round((longSide * parsed.width) / parsed.height));
+    const height = landscape ? Math.max(1, Math.round((longSide * parsed.height) / parsed.width)) : longSide;
+    return `${width}x${height}`;
 }
 
 function OptionPill({ selected, theme, onClick, children }: { selected: boolean; theme: CanvasTheme; onClick: () => void; children: ReactNode }) {

@@ -254,7 +254,7 @@ export function getPluginAuthoringPrompt(capability: ModelCapability, modelName:
         i18n.t("modelPlugin.authoring.rulesTitle"),
         i18n.t("modelPlugin.authoring.rules"),
     ];
-    if (capability === "video") lines.push("", i18n.t("modelPlugin.authoring.settings"));
+    if (capability === "video" || capability === "image") lines.push("", i18n.t("modelPlugin.authoring.settings"));
     const templates = getPluginTemplates()[capability];
     if (templates.length) {
         lines.push("", i18n.t("modelPlugin.authoring.examplesTitle"));

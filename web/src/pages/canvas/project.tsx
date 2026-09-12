@@ -433,6 +433,7 @@ function InfiniteCanvasPage() {
     useEffect(() => {
         if (!hydrated) return;
         setProjectLoaded(false);
+        didInitialCenterRef.current = false;
         const project = openProject(projectId);
         if (!project) {
             navigate("/canvas", { replace: true });
@@ -549,24 +550,30 @@ function InfiniteCanvasPage() {
         selectionBoxRef.current = selectionBox;
     }, [selectionBox]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
+        // Canvas is replaced by CanvasRefreshShell until restore finishes; measure only after it mounts.
+        if (!projectLoaded) return;
         const el = containerRef.current;
         if (!el) return;
 
-        const updateSize = () => {
-            const rect = el.getBoundingClientRect();
-            setSize({ width: rect.width, height: rect.height });
+        const updateSize = (width: number, height: number) => {
+            if (!width || !height) return;
+            setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
             if (!didInitialCenterRef.current) {
                 didInitialCenterRef.current = true;
-                setViewport({ x: rect.width / 2, y: rect.height / 2, k: 1 });
+                setViewport((prev) => (prev.x === 0 && prev.y === 0 && prev.k === 1 ? { x: width / 2, y: height / 2, k: 1 } : prev));
             }
         };
 
-        updateSize();
-        const resizeObserver = new ResizeObserver(updateSize);
+        const rect = el.getBoundingClientRect();
+        updateSize(rect.width, rect.height);
+        const resizeObserver = new ResizeObserver((entries) => {
+            const box = entries[0]?.contentRect;
+            if (box) updateSize(box.width, box.height);
+        });
         resizeObserver.observe(el);
         return () => resizeObserver.disconnect();
-    }, []);
+    }, [projectLoaded]);
 
     const screenToCanvas = useCallback((clientX: number, clientY: number) => {
         const rect = containerRef.current?.getBoundingClientRect();
@@ -685,16 +692,19 @@ function InfiniteCanvasPage() {
     );
 
     const visibleNodes = useMemo(() => {
-        const padding = 280;
-        const rect = containerRef.current?.getBoundingClientRect();
-        const width = rect?.width || size.width;
-        const height = rect?.height || size.height;
-        const viewLeft = -viewport.x / viewport.k - padding;
-        const viewTop = -viewport.y / viewport.k - padding;
-        const viewRight = viewLeft + width / viewport.k + padding * 2;
-        const viewBottom = viewTop + height / viewport.k + padding * 2;
+        const width = size.width;
+        const height = size.height;
+        if (width <= 0 || height <= 0) return nodes;
 
-        return nodes.filter((node) => node.position.x + node.width > viewLeft && node.position.x < viewRight && node.position.y + node.height > viewTop && node.position.y < viewBottom);
+        const padding = 480;
+        const k = viewport.k;
+        return nodes.filter((node) => {
+            const x = viewport.x + node.position.x * k;
+            const y = viewport.y + node.position.y * k;
+            const w = (node.width || 0) * k;
+            const h = (node.height || 0) * k;
+            return x + w > -padding && x < width + padding && y + h > -padding && y < height + padding;
+        });
     }, [nodes, size.height, size.width, viewport.k, viewport.x, viewport.y]);
 
     const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
@@ -3146,7 +3156,7 @@ function InfiniteCanvasPage() {
                     onContextMenu={preventCanvasContextMenu}
                     onDrop={handleDrop}
                 >
-                    <svg className="absolute left-0 top-0 h-[10000px] w-[10000px] overflow-visible" style={{ pointerEvents: "none", transform: "translateZ(0)", zIndex: 0 }}>
+                    <svg className="absolute left-0 top-0 h-[10000px] w-[10000px] overflow-visible" style={{ pointerEvents: "none", zIndex: 0 }}>
                         {connections
                             .map((connection) => {
                                 const from = nodeById.get(connection.fromNodeId);
