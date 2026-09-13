@@ -3015,6 +3015,25 @@ function InfiniteCanvasPage() {
         [insertAssistantImage, insertAssistantText, screenToCanvas, size.height, size.width],
     );
 
+    const handleApplyPrompt = useCallback(
+        (payload: { content: string; title: string }) => {
+            const selectedIds = selectedNodeIdsRef.current;
+            if (selectedIds.size === 1) {
+                const nodeId = selectedIds.values().next().value as string;
+                const node = nodesRef.current.find((item) => item.id === nodeId);
+                if (node && (node.type === CanvasNodeType.Image || node.type === CanvasNodeType.Video || node.type === CanvasNodeType.Text)) {
+                    const fillComposer = (node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim())) || (node.type === CanvasNodeType.Image && Boolean(node.metadata?.content));
+                    if (fillComposer) handleConfigNodeChange(node.id, { composerContent: payload.content });
+                    else handleNodePromptChange(node.id, payload.content);
+                    setDialogNodeId(node.id);
+                    return;
+                }
+            }
+            insertAssistantText(payload.content, payload.title);
+        },
+        [handleConfigNodeChange, handleNodePromptChange, insertAssistantText],
+    );
+
     // Memoize every callback and render function passed to CanvasNode.
     // CanvasNode uses React.memo, but new prop references would invalidate it on every render and rerender every node
     // during click, hover, or viewport changes, which is especially expensive for Markdown. These useCallback values
@@ -3109,7 +3128,7 @@ function InfiniteCanvasPage() {
 
     return (
         <main className="flex h-full min-h-0 overflow-hidden" style={{ background: theme.canvas.background, color: theme.node.text }}>
-            <CanvasSidePanel nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onPreviewNode={setPreviewNodeId} onInsertAsset={handleAssetInsert} />
+            <CanvasSidePanel nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onPreviewNode={setPreviewNodeId} onInsertAsset={handleAssetInsert} onApplyPrompt={handleApplyPrompt} />
             <section className="relative min-w-0 flex-1 overflow-hidden">
                 <CanvasTopBar
                     title={currentProject?.title || t("canvas.projectPage.untitledCanvas")}

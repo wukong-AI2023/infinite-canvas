@@ -7,6 +7,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { fetchPrompts, type Prompt } from "@/services/api/prompts";
 import { navigationTools } from "@/constant/navigation-tools";
 import i18n from "@/i18n";
+import { displayPromptTag } from "@/lib/prompt-tag-labels";
 import { cn } from "@/lib/utils";
 
 function Highlighter({ action, color, children }: { action: "highlight" | "underline"; color: string; children?: ReactNode }) {
@@ -89,7 +90,7 @@ export default function IndexPage() {
                                     <div className="mb-2 flex flex-wrap gap-1.5">
                                         {item.tags.slice(0, 2).map((tag) => (
                                             <Tag key={tag} variant="filled" className="m-0 bg-white/15 text-[11px] text-white backdrop-blur">
-                                                {tag}
+                                                {displayPromptTag(tag)}
                                             </Tag>
                                         ))}
                                     </div>

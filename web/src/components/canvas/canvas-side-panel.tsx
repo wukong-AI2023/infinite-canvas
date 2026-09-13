@@ -1,21 +1,21 @@
-import { memo, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { App, Empty, Input, Popconfirm, Select, Spin, Tag } from "antd";
-import { useQuery } from "@tanstack/react-query";
-import { BookOpen, Check, ChevronRight, Download, Eye, FileText, Image as ImageIcon, ListChecks, Music2, Plus, Search, Settings2, Square, Trash2, Type, Video } from "lucide-react";
+import { BookmarkCheck, Check, ChevronRight, Download, Eye, FileText, Image as ImageIcon, ListChecks, Music2, Plus, Search, Settings2, Square, Trash2, Type, Video } from "lucide-react";
 import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { exportCanvasNodes } from "@/lib/canvas/canvas-export";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
+import { isPromptLibraryAsset, promptLibraryKey, type SavedPrompt } from "@/lib/prompt-library";
+import { displayPromptTag } from "@/lib/prompt-tag-labels";
 import { cn } from "@/lib/utils";
-import { PromptDetailDialog } from "@/pages/prompts/components/prompt-detail-dialog";
-import { fetchSourcePrompts, type Prompt } from "@/services/api/prompts";
 import { AssetThumb } from "@/components/asset-thumb";
 import { uploadMediaFile } from "@/services/file-storage";
 import { uploadImage } from "@/services/image-storage";
 import { useAssetStore, type Asset, type AssetKind } from "@/stores/use-asset-store";
-import { usePromptSourceStore } from "@/stores/use-prompt-source-store";
+import { usePromptLibraryStore } from "@/stores/use-prompt-library-store";
 import { CANVAS_SIDE_PANEL_MAX_WIDTH, CANVAS_SIDE_PANEL_MIN_WIDTH, CANVAS_SIDE_PANEL_MOTION_MS, useCanvasSidePanelStore } from "@/stores/use-canvas-side-panel-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
@@ -33,6 +33,7 @@ type Props = {
     onFocusNode: (nodeId: string) => void;
     onPreviewNode: (nodeId: string) => void;
     onInsertAsset: (payload: InsertAssetPayload) => void;
+    onApplyPrompt: (payload: { content: string; title: string }) => void;
 };
 
 const NODE_TYPE_ICON: Record<string, typeof Square> = {
@@ -51,7 +52,7 @@ const STATUS_COLOR: Record<string, string> = {
     idle: "transparent",
 };
 
-export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreviewNode, onInsertAsset }: Props) {
+export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreviewNode, onInsertAsset, onApplyPrompt }: Props) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [tab, setTab] = useState<PanelTab>("canvas");
@@ -111,7 +112,7 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
                     ) : tab === "assets" ? (
                         <CanvasAssetsTab onInsert={onInsertAsset} theme={theme} />
                     ) : (
-                        <CanvasPromptsTab onInsert={onInsertAsset} theme={theme} />
+                        <CanvasPromptsTab onApply={onApplyPrompt} theme={theme} />
                     )}
                 </div>
                 <button type="button" className="absolute inset-y-0 right-0 z-40 w-4 translate-x-1/2 cursor-col-resize" onPointerDown={startResize} aria-label={t("canvas.sidePanel.resize")} />
@@ -320,13 +321,14 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onI
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
     const [uploading, setUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const visibleAssets = useMemo(() => assets.filter((asset) => !isPromptLibraryAsset(asset)), [assets]);
 
-    const allTags = useMemo(() => Array.from(new Set(assets.flatMap((asset) => asset.tags || []))).slice(0, 20), [assets]);
+    const allTags = useMemo(() => Array.from(new Set(visibleAssets.flatMap((asset) => asset.tags || []))).slice(0, 20), [visibleAssets]);
 
     const filtered = useMemo(() => {
         const query = keyword.trim().toLowerCase();
-        return assets.filter((asset) => (tagFilter === "all" || (asset.tags || []).includes(tagFilter)) && (!query || [asset.title, ...(asset.tags || [])].join(" ").toLowerCase().includes(query)));
-    }, [assets, keyword, tagFilter]);
+        return visibleAssets.filter((asset) => (tagFilter === "all" || (asset.tags || []).includes(tagFilter)) && (!query || [asset.title, ...(asset.tags || [])].join(" ").toLowerCase().includes(query)));
+    }, [visibleAssets, keyword, tagFilter]);
 
     const groups = useMemo(() => ASSET_GROUPS.map((group) => ({ ...group, items: filtered.filter((asset) => asset.kind === group.kind) })).filter((group) => group.items.length > 0), [filtered]);
 
@@ -458,26 +460,28 @@ function AssetCover({ asset }: { asset: Asset }) {
 }
 
 // ---------------------------------------------------------------------------
-// Prompt library tab: collapsible source groups, lazy loading, and copy or text-node insertion actions.
+// Saved prompts tab: collection cards, apply-to-node or insert text node.
 // ---------------------------------------------------------------------------
 
-const CanvasPromptsTab = memo(function CanvasPromptsTab({ onInsert, theme }: { onInsert: (payload: InsertAssetPayload) => void; theme: CanvasTheme }) {
+const CanvasPromptsTab = memo(function CanvasPromptsTab({ onApply, theme }: { onApply: (payload: { content: string; title: string }) => void; theme: CanvasTheme }) {
     const { message } = App.useApp();
     const { t } = useTranslation();
-    const sources = usePromptSourceStore((state) => state.sources);
-    const enabledSources = useMemo(() => sources.filter((source) => source.enabled), [sources]);
+    const savedPrompts = usePromptLibraryStore((state) => state.savedPrompts);
+    const removeSaved = usePromptLibraryStore((state) => state.removeSaved);
     const [keyword, setKeyword] = useState("");
-    const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-    const [detail, setDetail] = useState<Prompt | null>(null);
+    const [hydrated, setHydrated] = useState(() => usePromptLibraryStore.persist.hasHydrated());
 
-    const copyPrompt = async (prompt: string) => {
-        try {
-            await navigator.clipboard.writeText(prompt);
-            message.success(t("canvas.sidePanel.promptCopied"));
-        } catch {
-            message.error(t("canvas.sidePanel.copyFailed"));
-        }
-    };
+    useEffect(() => {
+        const unsub = usePromptLibraryStore.persist.onFinishHydration(() => setHydrated(true));
+        if (usePromptLibraryStore.persist.hasHydrated()) setHydrated(true);
+        return unsub;
+    }, []);
+
+    const filtered = useMemo(() => {
+        const query = keyword.trim().toLowerCase();
+        if (!query) return savedPrompts;
+        return savedPrompts.filter((item) => [item.title, item.prompt, ...(item.tags || []), ...(item.tags || []).map((tag) => displayPromptTag(tag))].join(" ").toLowerCase().includes(query));
+    }, [savedPrompts, keyword]);
 
     return (
         <div className="flex h-full flex-col">
@@ -485,123 +489,67 @@ const CanvasPromptsTab = memo(function CanvasPromptsTab({ onInsert, theme }: { o
                 <Input size="small" allowClear prefix={<Search className="size-3.5 text-stone-400" />} placeholder={t("canvas.sidePanel.searchPrompts")} value={keyword} onChange={(e) => setKeyword(e.target.value)} />
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-                <div className="space-y-1">
-                    {enabledSources.length ? enabledSources.map((source) => (
-                        <PromptSourceGroup
-                            key={source.id}
-                            sourceId={source.id}
-                            sourceName={source.name}
-                            keyword={keyword}
-                            open={!!expanded[source.id]}
-                            theme={theme}
-                            onToggle={() => setExpanded((prev) => ({ ...prev, [source.id]: !prev[source.id] }))}
-                            onInsert={onInsert}
-                            onView={setDetail}
-                        />
-                    )) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("canvas.sidePanel.noPrompts")} className="pt-12" />}
-                </div>
+                {!hydrated ? (
+                    <div className="flex justify-center pt-16">
+                        <Spin size="small" />
+                    </div>
+                ) : filtered.length ? (
+                    <div className="grid grid-cols-2 gap-2">
+                        {filtered.map((item) => (
+                            <SavedPromptCard
+                                key={promptLibraryKey(item)}
+                                item={item}
+                                theme={theme}
+                                onApply={() => onApply({ content: item.prompt, title: item.title })}
+                                onRemove={() => {
+                                    removeSaved(promptLibraryKey(item));
+                                    message.success(t("prompts.uncollected"));
+                                }}
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={savedPrompts.length ? t("canvas.sidePanel.noMatchingPrompts") : t("canvas.sidePanel.noSavedPrompts")} className="pt-16">
+                        {savedPrompts.length ? null : (
+                            <Link to="/prompts" className="text-xs opacity-70 transition hover:opacity-100">
+                                {t("canvas.sidePanel.browsePromptLibrary")}
+                            </Link>
+                        )}
+                    </Empty>
+                )}
             </div>
-            <PromptDetailDialog prompt={detail} onClose={() => setDetail(null)} onCopy={(prompt) => void copyPrompt(prompt)} />
         </div>
     );
 });
 
-function PromptSourceGroup({
-    sourceId,
-    sourceName,
-    keyword,
-    open,
-    theme,
-    onToggle,
-    onInsert,
-    onView,
-}: {
-    sourceId: string;
-    sourceName: string;
-    keyword: string;
-    open: boolean;
-    theme: CanvasTheme;
-    onToggle: () => void;
-    onInsert: (payload: InsertAssetPayload) => void;
-    onView: (prompt: Prompt) => void;
-}) {
+function SavedPromptCard({ item, theme, onApply, onRemove }: { item: SavedPrompt; theme: CanvasTheme; onApply: () => void; onRemove: () => void }) {
     const { t } = useTranslation();
-    // Cache a source after its first expansion to avoid repeated requests; search results also need the data for counts.
-    const showResults = open || !!keyword.trim();
-    const query = useQuery({ queryKey: ["side-panel-prompts", sourceId], queryFn: () => fetchSourcePrompts(sourceId), enabled: showResults, staleTime: 1000 * 60 * 60 });
-
-    const filtered = useMemo(() => {
-        const items = query.data || [];
-        const q = keyword.trim().toLowerCase();
-        if (!q) return items;
-        return items.filter((item) => [item.title, item.prompt, ...item.tags].join(" ").toLowerCase().includes(q));
-    }, [query.data, keyword]);
-
-    const insertPrompt = (item: Prompt) => onInsert({ kind: "text", content: item.prompt, title: item.title });
-
     return (
-        <div>
-            <button type="button" onClick={onToggle} className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left text-xs font-semibold opacity-75 transition hover:opacity-100">
-                <ChevronRight className={cn("size-3.5 transition-transform", showResults && "rotate-90")} />
-                <BookOpen className="size-3.5" />
-                <span className="min-w-0 flex-1 truncate">{sourceName}</span>
-                {showResults && query.isSuccess ? <span className="opacity-50">{filtered.length}</span> : null}
-            </button>
-            {showResults ? (
-                <div className="px-1 pb-2 pt-1">
-                    {query.isLoading ? (
-                        <div className="flex justify-center py-6">
-                            <Spin size="small" />
-                        </div>
-                    ) : query.isError ? (
-                        <button type="button" onClick={() => void query.refetch()} className="block w-full py-4 text-center text-xs text-red-500 opacity-80 transition hover:opacity-100">
-                            {t("canvas.sidePanel.loadFailedRetry")}
-                        </button>
-                    ) : filtered.length ? (
-                        <div className="space-y-1.5">
-                            {filtered.map((item) => (
-                                <PromptRow key={item.id} item={item} theme={theme} onInsert={() => insertPrompt(item)} onView={() => onView(item)} />
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="py-4 text-center text-xs opacity-40">{keyword.trim() ? t("canvas.sidePanel.noMatchingPrompts") : t("canvas.sidePanel.sourceEmpty")}</div>
-                    )}
+        <div className="group relative overflow-hidden rounded-xl border transition duration-200 hover:-translate-y-0.5 hover:shadow-lg" style={{ borderColor: theme.node.stroke, background: theme.node.panel }}>
+            <button type="button" onClick={onApply} className="block w-full text-left">
+                {item.coverUrl ? (
+                    <img src={item.coverUrl} alt="" className="aspect-square w-full object-cover transition duration-300 group-hover:scale-[1.04]" loading="lazy" />
+                ) : (
+                    <span className="grid aspect-square w-full place-items-center">
+                        <FileText className="size-8 opacity-50" />
+                    </span>
+                )}
+                <div className="px-2 py-1.5">
+                    <div className="truncate text-xs font-medium leading-snug">{item.title}</div>
                 </div>
-            ) : null}
-        </div>
-    );
-}
-
-function PromptRow({ item, theme, onInsert, onView }: { item: Prompt; theme: CanvasTheme; onInsert: () => void; onView: () => void }) {
-    const { t } = useTranslation();
-    return (
-        <div className="group relative flex items-center gap-2.5 rounded-lg px-2 py-2 transition hover:bg-black/5 dark:hover:bg-white/5">
-            {item.coverUrl ? (
-                <img src={item.coverUrl} alt="" className="size-10 shrink-0 rounded-md object-cover" loading="lazy" />
-            ) : (
-                <span className="grid size-10 shrink-0 place-items-center rounded-md" style={{ background: theme.node.panel }}>
-                    <FileText className="size-4 opacity-50" />
-                </span>
-            )}
-            <button type="button" onClick={onView} className="min-w-0 flex-1 text-left">
-                <div className="truncate text-sm font-medium leading-snug">{item.title}</div>
-                <div className="mt-0.5 truncate text-xs leading-snug opacity-50">{item.prompt}</div>
             </button>
-            <div className="flex shrink-0 flex-col items-center gap-0.5">
-                <button type="button" onClick={onView} className="grid size-6 place-items-center rounded-md opacity-60 transition hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10" aria-label={t("canvas.sidePanel.viewDetails")} title={t("canvas.sidePanel.viewDetails")}>
-                    <Eye className="size-3.5" />
-                </button>
-                <button
-                    type="button"
-                    onClick={onInsert}
-                    className="grid size-6 place-items-center rounded-md opacity-60 transition hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
-                    style={{ color: theme.toolbar.activeText }}
-                    aria-label={t("canvas.sidePanel.inserted")}
-                    title={t("canvas.sidePanel.inserted")}
-                >
-                    <Plus className="size-3.5" />
-                </button>
-            </div>
+            <button
+                type="button"
+                onClick={(event) => {
+                    event.stopPropagation();
+                    onRemove();
+                }}
+                className="absolute right-1.5 top-1.5 grid size-7 place-items-center rounded-full bg-white/90 text-stone-700 opacity-0 shadow-sm backdrop-blur transition hover:bg-white hover:text-red-500 group-hover:opacity-100 dark:bg-black/60 dark:text-stone-100 dark:hover:bg-black/80 dark:hover:text-red-400"
+                aria-label={t("canvas.sidePanel.uncollectPrompt")}
+                title={t("canvas.sidePanel.uncollectPrompt")}
+            >
+                <BookmarkCheck className="size-3.5" />
+            </button>
         </div>
     );
 }

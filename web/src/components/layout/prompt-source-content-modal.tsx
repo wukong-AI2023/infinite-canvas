@@ -1,11 +1,12 @@
 import { App, Button, Empty, Modal, Space, Table, Tag } from "antd";
-import { Copy, FolderPlus, RefreshCw } from "lucide-react";
+import { Copy, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { PromptCollectButton } from "@/components/prompts/prompt-collect-button";
 import { PromptDetailDialog } from "@/pages/prompts/components/prompt-detail-dialog";
 import { useCopyText } from "@/hooks/use-copy-text";
-import { useAssetStore } from "@/stores/use-asset-store";
+import { displayPromptTag } from "@/lib/prompt-tag-labels";
 import { fetchSourcePrompts, refreshSource, type Prompt } from "@/services/api/prompts";
 import type { PromptSource } from "@/services/api/prompt-source-presets";
 
@@ -16,8 +17,6 @@ export function PromptSourceContentModal({ source, onClose }: { source: PromptSo
     const [loading, setLoading] = useState(false);
     const [detail, setDetail] = useState<Prompt | null>(null);
     const copyText = useCopyText();
-    const addAsset = useAssetStore((state) => state.addAsset);
-
     const load = useCallback(
         async (force: boolean) => {
             if (!source) return;
@@ -37,11 +36,6 @@ export function PromptSourceContentModal({ source, onClose }: { source: PromptSo
         if (source) void load(false);
         else setItems([]);
     }, [source, load]);
-
-    const saveAsset = (item: Prompt) => {
-        addAsset({ kind: "text", title: item.title, coverUrl: item.coverUrl, tags: item.tags, source: item.category, data: { content: item.prompt }, metadata: { source: "prompt-library", promptId: item.id, githubUrl: item.githubUrl } });
-        message.success(t("common.addedToAssets"));
-    };
 
     return (
         <>
@@ -95,7 +89,7 @@ export function PromptSourceContentModal({ source, onClose }: { source: PromptSo
                                 <div className="flex flex-wrap gap-1">
                                     {tags.slice(0, 4).map((tag) => (
                                         <Tag key={tag} className="m-0">
-                                            {tag}
+                                            {displayPromptTag(tag)}
                                         </Tag>
                                     ))}
                                 </div>
@@ -103,7 +97,7 @@ export function PromptSourceContentModal({ source, onClose }: { source: PromptSo
                         },
                         {
                             title: t("config.promptSources.content.actions"),
-                            width: 210,
+                            width: 250,
                             render: (_, item) => (
                                 <Space size={4} wrap>
                                     <Button size="small" type="text" icon={<Copy className="size-3.5" />} onClick={() => copyText(item.prompt, t("common.promptCopied"))}>
@@ -112,16 +106,14 @@ export function PromptSourceContentModal({ source, onClose }: { source: PromptSo
                                     <Button size="small" type="text" onClick={() => setDetail(item)}>
                                         {t("common.details")}
                                     </Button>
-                                    <Button size="small" type="text" icon={<FolderPlus className="size-3.5" />} onClick={() => saveAsset(item)}>
-                                        {t("common.addToAssets")}
-                                    </Button>
+                                    <PromptCollectButton prompt={item} size="small" type="text" />
                                 </Space>
                             ),
                         },
                     ]}
                 />
             </Modal>
-            <PromptDetailDialog prompt={detail} onClose={() => setDetail(null)} onCopy={(prompt) => copyText(prompt, t("common.promptCopied"))} onSaveAsset={saveAsset} />
+            <PromptDetailDialog prompt={detail} onClose={() => setDetail(null)} onCopy={(prompt) => copyText(prompt, t("common.promptCopied"))} showSaveAsset />
         </>
     );
 }

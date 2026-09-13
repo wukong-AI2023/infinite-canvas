@@ -37,6 +37,43 @@ type AssetStore = {
 };
 
 const ASSET_STORE_KEY = "infinite-canvas:asset_store";
+const ASSET_SYNC_CHANNEL = "infinite-canvas:asset_store_sync";
+
+let persistReady = false;
+let applyingRemote = false;
+let assetSyncChannel: BroadcastChannel | null = null;
+
+function getAssetSyncChannel() {
+    if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") return null;
+    if (!assetSyncChannel) {
+        assetSyncChannel = new BroadcastChannel(ASSET_SYNC_CHANNEL);
+        assetSyncChannel.onmessage = () => {
+            void applyRemoteAssets();
+        };
+    }
+    return assetSyncChannel;
+}
+
+async function applyRemoteAssets() {
+    const value = await assetStorage.getItem(ASSET_STORE_KEY);
+    const assets = value?.state?.assets;
+    if (!Array.isArray(assets)) return;
+    applyingRemote = true;
+    try {
+        useAssetStore.setState({ assets });
+    } finally {
+        applyingRemote = false;
+    }
+}
+
+function mergeHydratedAssets(persistedState: unknown, currentState: AssetStore): AssetStore {
+    const persisted = (persistedState || {}) as Partial<AssetStore>;
+    const persistedAssets = persisted.assets || [];
+    const currentAssets = currentState.assets || [];
+    const persistedIds = new Set(persistedAssets.map((asset) => asset.id));
+    const extras = currentAssets.filter((asset) => !persistedIds.has(asset.id));
+    return { ...currentState, ...persisted, assets: extras.length ? [...extras, ...persistedAssets] : persistedAssets };
+}
 
 const assetStorage: PersistStorage<AssetStore> = {
     getItem: async (name) => {
@@ -64,7 +101,12 @@ const assetStorage: PersistStorage<AssetStore> = {
         );
         return parsed;
     },
-    setItem: (name, value) => localForageStorage.setItem(name, JSON.stringify(value)),
+    setItem: (name, value) => {
+        if (!persistReady) return;
+        const result = localForageStorage.setItem(name, JSON.stringify(value));
+        if (!applyingRemote) void Promise.resolve(result).then(() => getAssetSyncChannel()?.postMessage({ type: "ping" }));
+        return result;
+    },
     removeItem: (name) => localForageStorage.removeItem(name),
 };
 
@@ -103,12 +145,22 @@ export const useAssetStore = create<AssetStore>()(
             name: ASSET_STORE_KEY,
             storage: assetStorage,
             partialize: (state) => ({ assets: state.assets }) as StorageValue<AssetStore>["state"],
-            onRehydrateStorage: () => () => {
-                useAssetStore.setState({ hydrated: true });
+            merge: (persistedState, currentState) => mergeHydratedAssets(persistedState, currentState),
+            onRehydrateStorage: () => (state, error) => {
+                persistReady = true;
+                getAssetSyncChannel();
+                if (error) {
+                    useAssetStore.setState({ hydrated: true });
+                    return;
+                }
+                const assets = (state || useAssetStore.getState()).assets;
+                useAssetStore.setState({ hydrated: true, assets: assets.slice() });
             },
         },
     ),
 );
+
+if (typeof window !== "undefined") queueMicrotask(() => getAssetSyncChannel());
 
 const thumbnailJobs = new Map<string, Promise<void>>();
 let thumbnailActive = 0;

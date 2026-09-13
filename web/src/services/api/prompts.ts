@@ -3,6 +3,9 @@ import localforage from "localforage";
 import { runPromptSource, type RawPrompt } from "./prompt-source-runtime";
 import { usePromptSourceStore } from "@/stores/use-prompt-source-store";
 import i18n from "@/i18n";
+import { isPromptLibraryFilterTag, PROMPT_LIBRARY_SAVED_TAG } from "@/lib/prompt-library";
+import type { SavedPrompt } from "@/lib/prompt-library";
+import { displayPromptTag } from "@/lib/prompt-tag-labels";
 import type { PromptSource } from "./prompt-source-presets";
 
 export type Prompt = RawPrompt & {
@@ -136,18 +139,20 @@ async function getAllPrompts(): Promise<Prompt[]> {
     return settled.flat();
 }
 
-export async function fetchPrompts({ keyword = "", tag = [], category = ALL_PROMPTS_OPTION, page = 1, pageSize = 20 }: { keyword?: string; tag?: string[]; category?: string; page?: number; pageSize?: number } = {}) {
-    const items = await getAllPrompts();
+export async function fetchPrompts({ keyword = "", tag = [], category = ALL_PROMPTS_OPTION, page = 1, pageSize = 20, savedPrompts = [] }: { keyword?: string; tag?: string[]; category?: string; page?: number; pageSize?: number; savedPrompts?: SavedPrompt[] } = {}) {
+    const useSaved = tag.includes(PROMPT_LIBRARY_SAVED_TAG);
+    const items = (useSaved ? savedPrompts : await getAllPrompts()) as Prompt[];
     const normalizedKeyword = keyword.trim().toLowerCase();
     const normalizedPage = Math.max(1, page);
     const normalizedPageSize = Math.max(1, Math.min(100, pageSize));
+    const realTags = tag.filter((item) => !isPromptLibraryFilterTag(item));
     const withoutTagFilter = filterPrompts(items, { keyword: normalizedKeyword, category, tags: [] });
-    const filtered = filterPrompts(items, { keyword: normalizedKeyword, category, tags: tag });
+    const filtered = filterPrompts(items, { keyword: normalizedKeyword, category, tags: realTags });
     const categories = enabledSources().map((source) => source.name);
 
     return {
         items: filtered.slice((normalizedPage - 1) * normalizedPageSize, normalizedPage * normalizedPageSize),
-        tags: collectTags(withoutTagFilter),
+        tags: collectTags(withoutTagFilter, items),
         categories,
         total: filtered.length,
     };
@@ -204,16 +209,65 @@ function summarizeRefresh(results: PromptSourceRefreshResult[]): PromptSourceRef
 }
 
 function filterPrompts(items: Prompt[], options: { keyword: string; category: string; tags: string[] }) {
+    const realTags = options.tags.filter((tag) => !isPromptLibraryFilterTag(tag));
     return items.filter((item) => {
         if (isActiveOption(options.category) && item.category !== options.category) return false;
-        if (options.tags.length && !options.tags.some((tag) => item.tags.includes(tag))) return false;
+        if (realTags.length && !realTags.some((tag) => item.tags.includes(tag))) return false;
         if (!options.keyword) return true;
-        return [item.title, item.prompt, item.description, item.category, ...item.tags].join(" ").toLowerCase().includes(options.keyword);
+        return [item.title, item.prompt, item.description, item.category, ...item.tags, ...item.tags.map((tag) => displayPromptTag(tag))].join(" ").toLowerCase().includes(options.keyword);
     });
 }
 
-function collectTags(items: Prompt[]) {
-    return Array.from(new Set(items.flatMap((item) => item.tags).filter(Boolean)));
+function authorKey(value: string) {
+    return value.trim().replace(/^@+/, "").toLowerCase();
+}
+
+function collectAuthorKeys(items: Prompt[]) {
+    const keys = new Set<string>();
+    for (const item of items) {
+        if (item.author) keys.add(authorKey(item.author));
+        for (const tag of item.tags) {
+            if (tag.includes("@")) keys.add(authorKey(tag));
+        }
+    }
+    return keys;
+}
+
+function isAuthorTag(tag: string, authorKeys: Set<string>) {
+    if (tag.includes("@")) return true;
+    const key = authorKey(tag);
+    return Boolean(key) && authorKeys.has(key);
+}
+
+function isSourceRepoTag(tag: string) {
+    return /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(tag);
+}
+
+function hasChinese(tag: string) {
+    return /[\u4e00-\u9fff]/.test(tag);
+}
+
+function isLowercaseSlug(tag: string) {
+    return /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(tag);
+}
+
+function isEnglishDuplicateTag(tag: string, items: Prompt[]) {
+    if (hasChinese(tag) || !isLowercaseSlug(tag)) return false;
+    const hits = items.filter((item) => item.tags.includes(tag));
+    if (!hits.length || !hits.every((item) => item.tags.some(hasChinese))) return false;
+    const bySource = new Map<string, { total: number; hit: number }>();
+    for (const item of items) {
+        const rec = bySource.get(item.sourceId) || { total: 0, hit: 0 };
+        rec.total += 1;
+        if (item.tags.includes(tag)) rec.hit += 1;
+        bySource.set(item.sourceId, rec);
+    }
+    return ![...bySource.values()].some((rec) => rec.hit > 0 && rec.hit / rec.total >= 0.8);
+}
+
+function collectTags(items: Prompt[], allItems: Prompt[]) {
+    const authorKeys = collectAuthorKeys(allItems);
+    return Array.from(new Set(items.flatMap((item) => item.tags).filter((tag) => tag && !isAuthorTag(tag, authorKeys) && !isSourceRepoTag(tag) && !isEnglishDuplicateTag(tag, allItems))));
 }
 
 function isActiveOption(value: string) {

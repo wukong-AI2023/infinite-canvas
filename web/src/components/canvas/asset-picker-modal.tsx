@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { AssetThumb } from "@/components/asset-thumb";
+import { isPromptLibraryAsset } from "@/lib/prompt-library";
 import { cn } from "@/lib/utils";
 import { useAssetStore, type Asset } from "@/stores/use-asset-store";
 
@@ -64,7 +65,7 @@ function MyAssetsTab({ onInsert }: { onInsert: (payload: InsertAssetPayload) => 
     const filtered = useMemo(() => {
         const query = keyword.trim().toLowerCase();
         return assets
-            .filter((a) => a.kind === "text" || a.kind === "image" || a.kind === "video")
+            .filter((a) => (a.kind === "text" || a.kind === "image" || a.kind === "video") && !isPromptLibraryAsset(a))
             .filter((a) => kindFilter === "all" || a.kind === kindFilter)
             .filter((a) => !query || [a.title, ...(a.tags || [])].join(" ").toLowerCase().includes(query));
     }, [assets, keyword, kindFilter]);

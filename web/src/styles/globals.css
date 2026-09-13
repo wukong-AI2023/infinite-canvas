@@ -520,6 +520,17 @@ html[data-theme="dark-gray"] .ant-tooltip .ant-tooltip-inner {
 
 }
 
+
+
+.prompt-filter-tag.ant-tag-checkable {
+    font-size: 14px !important;
+}
+
+.prompt-filter-tag.prompt-filter-group.ant-tag-checkable {
+    font-size: 16px !important;
+    font-weight: 700 !important;
+}
+
 ::view-transition-old(root),
 ::view-transition-new(root) {
     animation: none;
