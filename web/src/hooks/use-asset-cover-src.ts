@@ -1,14 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
-import { ensureAssetImageThumbnail, type Asset } from "@/stores/use-asset-store";
+import { assetCoverUrl, type Asset } from "@/stores/use-asset-store";
+import { ensureImagePreview, getImagePreviewRevision, subscribeImagePreviews } from "@/services/image-storage";
 
 export function useAssetCoverSrc(asset: Asset) {
-    const pending = asset.kind === "image" && asset.coverStorageKey === undefined;
+    useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
+    const storageKey = asset.kind === "image" ? asset.data.storageKey : undefined;
     useEffect(() => {
-        if (pending) void ensureAssetImageThumbnail(asset.id);
-    }, [asset.id, pending]);
+        if (storageKey) void ensureImagePreview(storageKey);
+    }, [storageKey]);
     if (asset.kind === "text") return "";
     if (asset.kind === "video") return asset.coverUrl;
-    if (pending) return "";
-    return asset.coverUrl || asset.data.dataUrl;
+    return assetCoverUrl(asset);
 }
