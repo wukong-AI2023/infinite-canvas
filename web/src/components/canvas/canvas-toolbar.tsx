@@ -75,19 +75,24 @@ export function CanvasToolbar({
     return (
         <div ref={rootRef} className="pointer-events-none absolute inset-y-0 left-5 z-50">
             <div ref={wrapRef} className="hide-scrollbar pointer-events-auto absolute left-0 top-1/2 flex max-h-[calc(100vh-32px)] w-12 -translate-y-1/2 flex-col items-center gap-2.5 overflow-y-auto rounded-full border px-2 py-2 shadow-lg backdrop-blur [&>*]:shrink-0" style={dockStyle}>
-                <button
-                    type="button"
-                    className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full transition"
-                    style={plusStyle}
-                    aria-label={t("canvas.createMenu.select")}
-                    onMouseEnter={openCreateMenu}
-                    onMouseLeave={scheduleCloseCreateMenu}
-                    onFocus={openCreateMenu}
-                    onBlur={scheduleCloseCreateMenu}
-                    onClick={openCreateMenu}
-                >
-                    <Plus className="size-5" strokeWidth={2.2} />
-                </button>
+                <Tooltip title={t("canvas.home")} placement="right" mouseEnterDelay={0.2}>
+                    <button type="button" className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full border transition hover:opacity-80" style={placeholderStyle} onClick={onHome} aria-label={t("canvas.home")}>
+                        <Home className="size-4.5" />
+                    </button>
+                </Tooltip>
+                <ToolbarButton id="tool-projects" label={t("canvas.projects")} hovered={hovered} hoverStyle={hoverStyle} onHover={setHovered} onClick={onProjects}>
+                    <Images className="size-4.5" />
+                </ToolbarButton>
+                <ToolbarButton id="tool-create-project" label={t("canvas.create")} hovered={hovered} hoverStyle={hoverStyle} onHover={setHovered} onClick={onCreateProject}>
+                    <Plus className="size-4.5" />
+                </ToolbarButton>
+                <ToolbarButton id="tool-import-asset" label={t("canvas.importAsset")} hovered={hovered} hoverStyle={hoverStyle} onHover={setHovered} onClick={onImportAsset}>
+                    <Upload className="size-4.5" />
+                </ToolbarButton>
+                <ToolbarButton id="tool-export-project" label={t("canvas.exportCurrent")} hovered={hovered} hoverStyle={hoverStyle} onHover={setHovered} onClick={onExportProject}>
+                    <Download className="size-4.5" />
+                </ToolbarButton>
+                <span className="my-0.5 h-px w-6 shrink-0" style={{ background: theme.toolbar.border }} aria-hidden="true" />
                 {extensionDefs.length ? (
                     <ToolbarButton
                         id="tool-extensions"
@@ -105,24 +110,19 @@ export function CanvasToolbar({
                         <Puzzle className="size-4.5" />
                     </ToolbarButton>
                 ) : null}
-                <ToolbarButton id="tool-import-asset" label={t("canvas.importAsset")} hovered={hovered} hoverStyle={hoverStyle} onHover={setHovered} onClick={onImportAsset}>
-                    <Upload className="size-4.5" />
-                </ToolbarButton>
-                <ToolbarButton id="tool-export-project" label={t("canvas.exportCurrent")} hovered={hovered} hoverStyle={hoverStyle} onHover={setHovered} onClick={onExportProject}>
-                    <Download className="size-4.5" />
-                </ToolbarButton>
-                <span className="my-0.5 h-px w-6 shrink-0" style={{ background: theme.toolbar.border }} aria-hidden="true" />
-                <ToolbarButton id="tool-create-project" label={t("canvas.create")} hovered={hovered} hoverStyle={hoverStyle} onHover={setHovered} onClick={onCreateProject}>
-                    <Plus className="size-4.5" />
-                </ToolbarButton>
-                <ToolbarButton id="tool-projects" label={t("canvas.projects")} hovered={hovered} hoverStyle={hoverStyle} onHover={setHovered} onClick={onProjects}>
-                    <Images className="size-4.5" />
-                </ToolbarButton>
-                <Tooltip title={t("canvas.home")} placement="right" mouseEnterDelay={0.2}>
-                    <button type="button" className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full border transition hover:opacity-80" style={placeholderStyle} onClick={onHome} aria-label={t("canvas.home")}>
-                        <Home className="size-4.5" />
-                    </button>
-                </Tooltip>
+                <button
+                    type="button"
+                    className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full transition"
+                    style={plusStyle}
+                    aria-label={t("canvas.createMenu.select")}
+                    onMouseEnter={openCreateMenu}
+                    onMouseLeave={scheduleCloseCreateMenu}
+                    onFocus={openCreateMenu}
+                    onBlur={scheduleCloseCreateMenu}
+                    onClick={openCreateMenu}
+                >
+                    <Plus className="size-5" strokeWidth={2.2} />
+                </button>
             </div>
 
             {createMenuOpen ? (

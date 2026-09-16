@@ -27,8 +27,12 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
     const dark = isDarkTheme(theme);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const canvasTheme = canvasThemes[theme];
-    const naturalIconClass = "inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-600 transition-colors hover:bg-black/5 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-white/10 dark:hover:text-white [&_svg]:size-4";
-    const iconStyle: CSSProperties | undefined = variant === "canvas" ? { color: canvasTheme.node.text } : undefined;
+    const naturalIconClass = variant === "canvas"
+        ? "inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md bg-[var(--icon-bg)] no-underline transition-colors hover:bg-[var(--icon-hover-bg)] [&_svg]:size-4"
+        : "inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-600 transition-colors hover:bg-black/5 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-white/10 dark:hover:text-white [&_svg]:size-4";
+    const iconStyle: CSSProperties | undefined = variant === "canvas"
+        ? { color: canvasTheme.node.text, ["--icon-bg" as string]: canvasTheme.toolbar.panel, ["--icon-hover-bg" as string]: canvasTheme.toolbar.itemHover }
+        : undefined;
     const versionStyle = iconStyle;
     const gitHubClassName = "size-7 text-base";
     const gitHubStyle = iconStyle;
@@ -46,9 +50,9 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
                 </Tooltip>
             ) : null}
             <Tooltip title={t("topNav.docs")} placement="bottom" mouseEnterDelay={0.2}>
-                <a href={DOCS_URL} target="_blank" rel="noopener noreferrer" className={naturalIconClass} style={iconStyle} aria-label={t("topNav.docs")}>
+                <button type="button" className={naturalIconClass} style={iconStyle} onClick={() => window.open(DOCS_URL, "_blank", "noopener,noreferrer")} aria-label={t("topNav.docs")}>
                     <BookOpen className="size-4" />
-                </a>
+                </button>
             </Tooltip>
             {showConfig ? (
                 <Tooltip title={t("navigation.config")} placement="bottom" mouseEnterDelay={0.2}>

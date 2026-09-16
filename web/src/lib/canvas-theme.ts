@@ -14,6 +14,7 @@ export const canvasThemes = {
             selectionStroke: "#7a7a7a",
             selectionFill: "rgba(28,25,23,.06)",
             groupFill: "rgba(28,25,23,.027)",
+            connectionSelected: "#9ed0fe",
         },
         node: {
             label: "#57534e",
@@ -43,6 +44,7 @@ export const canvasThemes = {
             selectionStroke: "#7a7a7a",
             selectionFill: "rgba(250,250,249,.10)",
             groupFill: "rgba(250,250,249,.045)",
+            connectionSelected: "#9ed0fe",
         },
         node: {
             label: "#d6d3d1",
@@ -72,6 +74,7 @@ export const canvasThemes = {
             selectionStroke: "#7a7a7a",
             selectionFill: "rgba(255,255,255,.12)",
             groupFill: "rgba(255,255,255,.054)",
+            connectionSelected: "#9ed0fe",
         },
         node: {
             label: "#f5f5f5",

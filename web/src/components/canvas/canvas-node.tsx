@@ -144,6 +144,9 @@ export const CanvasNode = React.memo(function CanvasNode({
     const contentInteractive = !supportsInteractionToggle || forceInteractive || !data.metadata?.content ? true : Boolean(data.metadata?.interactive);
     // Transparent nodes such as SVGs blend into the canvas while retaining outlines for selected or related states.
     const transparentBg = Boolean(definition?.transparentBackground);
+    // Loading/error keep the solid frame even if leftover media content is still stored.
+    const showingMediaContent = (hasImageContent || hasVideoContent) && data.metadata?.status !== "loading" && data.metadata?.status !== "error";
+    const useTransparentFrame = showingMediaContent || transparentBg;
     const isActive = isConnectionTarget || isSelected || isFocusRelated;
     const imageBorderColor = isActive ? theme.node.activeStroke : isRelated ? theme.node.muted : "transparent";
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -368,7 +371,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 <div
                     className={`relative h-full w-full rounded-[20px] ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
                     style={{
-                        background: isGroup ? theme.canvas.groupFill : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
+                        background: isGroup ? theme.canvas.groupFill : useTransparentFrame ? "transparent" : theme.node.fill,
                         borderRadius: NODE_FRAME_RADIUS_PX,
                         boxShadow: isGroupDropTarget ? `0 0 0 2px ${theme.node.activeStroke}66, inset 0 0 0 999px ${theme.node.activeStroke}10` : isActive ? `0 0 0 1px ${theme.node.activeStroke}55` : isRelated ? `0 0 0 1px ${theme.node.muted}55, 0 18px 48px rgba(0,0,0,.14)` : undefined,
                     }}
@@ -402,7 +405,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                         className={`relative flex h-full w-full items-center justify-center rounded-[20px] ${isBatchRoot ? "overflow-visible" : "overflow-hidden"}`}
                         style={
                             {
-                                background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
+                                background: isGroup ? "transparent" : useTransparentFrame ? "transparent" : theme.node.fill,
                                 borderRadius: NODE_FRAME_RADIUS_PX,
                                 pointerEvents: contentInteractive ? undefined : "none",
                             } as React.CSSProperties
@@ -444,7 +447,7 @@ export const CanvasNode = React.memo(function CanvasNode({
 
                     <div
                         className="pointer-events-none absolute inset-0 z-[65] rounded-[20px] border-2 border-solid"
-                        style={{ borderRadius: NODE_FRAME_RADIUS_PX, borderColor: isGroup ? (isGroupDropTarget || isActive ? theme.node.activeStroke : theme.node.stroke) : hasImageContent ? imageBorderColor : isActive ? theme.node.activeStroke : isRelated ? theme.node.muted : transparentBg ? "transparent" : theme.node.stroke }}
+                        style={{ borderRadius: NODE_FRAME_RADIUS_PX, borderColor: isGroup ? (isGroupDropTarget || isActive ? theme.node.activeStroke : theme.node.stroke) : showingMediaContent ? imageBorderColor : isActive ? theme.node.activeStroke : isRelated ? theme.node.muted : transparentBg ? "transparent" : theme.node.stroke }}
                     />
                 </div>
                 {!referenceSelectionState ? <ResizeHandle corner="top-left" onMouseDown={handleResizeMouseDown} /> : null}
@@ -534,7 +537,7 @@ function GroupNodeContent({ node, theme, groupChildCount }: NodeContentRendererP
 function LoadingContent({ theme }: Pick<NodeContentRendererProps, "theme">) {
     const { t } = useTranslation();
     return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color: theme.node.activeStroke }}>
+        <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ background: theme.node.fill, color: theme.node.activeStroke }}>
             <div className="size-10 animate-spin rounded-full border-2" style={{ borderColor: theme.node.stroke, borderTopColor: theme.node.activeStroke }} />
             <span className="text-[10px] tracking-[0.2em]">{t("canvas.node.generating")}</span>
         </div>

@@ -158,6 +158,7 @@ export type SelectionBox = {
     currentWorldY: number;
     additive: boolean;
     initialSelectedNodeIds: string[];
+    initialSelectedConnectionIds: string[];
 };
 
 export type ContextMenuState =
