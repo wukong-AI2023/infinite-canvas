@@ -22,7 +22,7 @@ import { nodeSizeFromNatural, nodeSizeFromRatio } from "@/lib/canvas/canvas-node
 import { captureVideoFrame, type VideoFramePosition } from "@/lib/canvas/canvas-video-frame";
 import { App, Button, Modal } from "antd";
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "@/constant/canvas";
-import { ActiveConnectionPath, ConnectionPath, applyConnectionLayerBounds, connectionIntersectsRect, connectionLayerBounds, connectionPathD } from "@/components/canvas/canvas-connections";
+import { ActiveConnectionPath, ConnectionPath, connectionIntersectsRect, connectionLayerBounds, connectionPathD } from "@/components/canvas/canvas-connections";
 import { CanvasConfigComposer } from "@/components/canvas/canvas-config-composer";
 import { CanvasConfigNodePanel } from "@/components/canvas/canvas-config-node-panel";
 import { CanvasNodeContextMenu } from "@/components/canvas/canvas-context-menu";
@@ -153,7 +153,6 @@ function applyNodeDragVisuals(cache: NodeDragVisuals | null, dx: number, dy: num
         const d = connectionPathD(from, to);
         connection.paths.forEach((path) => path.setAttribute("d", d));
     });
-    applyConnectionLayerBounds(cache.layer, connectionLayerBounds([...moved.values()]));
 }
 
 function removeDeletedReferenceTokens(value: string | undefined, deletedIds: Set<string>) {
@@ -884,8 +883,8 @@ function InfiniteCanvasPage() {
     );
 
     const visibleNodes = useMemo(
-        () => nodes.filter((node) => node.position.x + node.width > viewBounds.left && node.position.x < viewBounds.right && node.position.y + node.height > viewBounds.top && node.position.y < viewBounds.bottom),
-        [nodes, viewBounds],
+        () => (isNodeDragging ? nodes : nodes.filter((node) => node.position.x + node.width > viewBounds.left && node.position.x < viewBounds.right && node.position.y + node.height > viewBounds.top && node.position.y < viewBounds.bottom)),
+        [isNodeDragging, nodes, viewBounds],
     );
 
     const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
@@ -901,12 +900,13 @@ function InfiniteCanvasPage() {
                 const startY = from.position.y + from.height / 2;
                 const endX = to.position.x;
                 const endY = to.position.y + to.height / 2;
+                if (isNodeDragging) return [{ connection, from, to }];
                 const curvature = Math.max(Math.abs(endX - startX) * 0.5, 50);
                 const inView =
                     Math.max(startX + curvature, endX) > viewBounds.left && Math.min(startX, endX - curvature) < viewBounds.right && Math.max(startY, endY) > viewBounds.top && Math.min(startY, endY) < viewBounds.bottom;
                 return inView ? [{ connection, from, to }] : [];
             }),
-        [connections, nodeById, viewBounds],
+        [connections, isNodeDragging, nodeById, viewBounds],
     );
     // The toolbar follows a single selected node selected by click, creation, marquee, or keyboard.
     // It stays hidden for multi-selection and while isNodeDragging is true.
