@@ -9,7 +9,7 @@ import { requestEdit, requestGeneration, requestImageQuestion } from "@/services
 import { requestAudioGeneration, storeGeneratedAudio } from "@/services/api/audio";
 import { createVideoGenerationTask, isVideoTaskFailed, storeGeneratedVideo, waitForVideoGenerationTask } from "@/services/api/video";
 import { defaultConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
-import { getImageBlob, uploadGeneratedImage, uploadImage } from "@/services/image-storage";
+import { ensureImagePreview, getImageBlob, uploadGeneratedImage, uploadImage } from "@/services/image-storage";
 import { getMediaBlob, uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { nanoid } from "nanoid";
 import { formatBytes, formatDuration, getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
@@ -69,7 +69,7 @@ import {
     resolveMetadataReferences,
     sourceNodeReferenceImages,
 } from "@/lib/canvas/canvas-generation-helpers";
-import { canvasImagePreviewFields, isCanvasPreviewOnlyNodesChange, queueMissingCanvasImagePreviews } from "@/lib/canvas/canvas-image-preview";
+
 import { getNodeDefinition, isBuiltinNodeType as isBuiltinType, useNodeRegistryVersion } from "@/lib/canvas/node-registry";
 import { registerBuiltinNodes } from "@/components/canvas/nodes/builtin-nodes";
 import { CanvasPluginManagerModal } from "@/components/canvas/canvas-plugin-manager-modal";
@@ -317,7 +317,8 @@ function InfiniteCanvasPage() {
         startY: number;
         dx: number;
         dy: number;
-        initialSelectedNodes: { id: string; x: number; y: number }[];
+        initialSelectedNodes: Map<string, { x: number; y: number }>;
+        movedIds: Set<string>;
     }>({
         isDraggingNode: false,
         hasMoved: false,
@@ -325,7 +326,8 @@ function InfiniteCanvasPage() {
         startY: 0,
         dx: 0,
         dy: 0,
-        initialSelectedNodes: [],
+        initialSelectedNodes: new Map(),
+        movedIds: new Set(),
     });
     const nodeDragVisualsRef = useRef<NodeDragVisuals | null>(null);
     const viewportLiveTimerRef = useRef<number | null>(null);
@@ -627,12 +629,6 @@ function InfiniteCanvasPage() {
         )
             return;
 
-        if (previous && isCanvasPreviewOnlyNodesChange(previous.nodes, next.nodes) && previous.connections === next.connections && previous.chatSessions === next.chatSessions && previous.activeChatId === next.activeChatId && previous.backgroundMode === next.backgroundMode && previous.showImageInfo === next.showImageInfo) {
-            silentNodePatchRef.current = false;
-            lastHistoryRef.current = next;
-            return;
-        }
-
         if (historyCommitTimerRef.current) clearTimeout(historyCommitTimerRef.current);
         historyCommitTimerRef.current = setTimeout(() => {
             const current = createHistoryEntry();
@@ -660,12 +656,10 @@ function InfiniteCanvasPage() {
 
     useEffect(() => {
         if (!projectLoaded) return;
-        queueMissingCanvasImagePreviews(nodes, (patcher) => {
-            setNodes((prev) => {
-                const next = patcher(prev);
-                if (next !== prev) silentNodePatchRef.current = true;
-                return next;
-            });
+        nodes.forEach((node) => {
+            if (node.type !== CanvasNodeType.Image) return;
+            void ensureImagePreview(node.metadata?.storageKey);
+            node.metadata?.images?.forEach((image) => void ensureImagePreview(image.storageKey));
         });
     }, [nodes, projectLoaded]);
 
@@ -873,28 +867,47 @@ function InfiniteCanvasPage() {
         [screenToCanvas],
     );
 
-    const visibleNodes = useMemo(() => {
-        const width = size.width;
-        const height = size.height;
-        if (isNodeDragging || width <= 0 || height <= 0) return nodes;
-
-        const padding = 480;
-        const k = viewport.k;
-        return nodes.filter((node) => {
-            const x = viewport.x + node.position.x * k;
-            const y = viewport.y + node.position.y * k;
-            const w = (node.width || 0) * k;
-            const h = (node.height || 0) * k;
-            return x + w > -padding && x < width + padding && y + h > -padding && y < height + padding;
-        });
-    }, [isNodeDragging, nodes, size.height, size.width, viewport.k, viewport.x, viewport.y]);
+    const viewBounds = useMemo(() => {
+        const padding = 280;
+        const rect = containerRef.current?.getBoundingClientRect();
+        const width = rect?.width || size.width;
+        const height = rect?.height || size.height;
+        const left = -viewport.x / viewport.k - padding;
+        const top = -viewport.y / viewport.k - padding;
+        return { left, top, right: left + width / viewport.k + padding * 2, bottom: top + height / viewport.k + padding * 2 };
+        // `nodes` keeps the container rect re-read on node changes, matching the previous behaviour when the container resizes without a size update.
+    }, [nodes, size.height, size.width, viewport.k, viewport.x, viewport.y]);
 
     const connectionBounds = useMemo(
         () => connectionLayerBounds(nodes, connectingParams ? [mouseWorld] : []),
         [connectingParams, mouseWorld, nodes],
     );
 
+    const visibleNodes = useMemo(
+        () => nodes.filter((node) => node.position.x + node.width > viewBounds.left && node.position.x < viewBounds.right && node.position.y + node.height > viewBounds.top && node.position.y < viewBounds.bottom),
+        [nodes, viewBounds],
+    );
+
     const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+
+    // Connections are culled like nodes; a cubic curve stays inside its control-point hull, so endpoint bounds widened by the curvature is a safe test.
+    const visibleConnections = useMemo(
+        () =>
+            connections.flatMap((connection) => {
+                const from = nodeById.get(connection.fromNodeId);
+                const to = nodeById.get(connection.toNodeId);
+                if (!from || !to) return [];
+                const startX = from.position.x + from.width;
+                const startY = from.position.y + from.height / 2;
+                const endX = to.position.x;
+                const endY = to.position.y + to.height / 2;
+                const curvature = Math.max(Math.abs(endX - startX) * 0.5, 50);
+                const inView =
+                    Math.max(startX + curvature, endX) > viewBounds.left && Math.min(startX, endX - curvature) < viewBounds.right && Math.max(startY, endY) > viewBounds.top && Math.min(startY, endY) < viewBounds.bottom;
+                return inView ? [{ connection, from, to }] : [];
+            }),
+        [connections, nodeById, viewBounds],
+    );
     // The toolbar follows a single selected node selected by click, creation, marquee, or keyboard.
     // It stays hidden for multi-selection and while isNodeDragging is true.
     const singleSelectedNodeId = selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : null;
@@ -1504,6 +1517,7 @@ function InfiniteCanvasPage() {
                 });
             }
         });
+        const initialSelectedNodes = new Map(currentNodes.filter((node) => dragIds.has(node.id)).map((node): [string, { x: number; y: number }] => [node.id, { x: node.position.x, y: node.position.y }]));
         dragRef.current = {
             isDraggingNode: true,
             hasMoved: false,
@@ -1511,7 +1525,8 @@ function InfiniteCanvasPage() {
             startY: event.clientY,
             dx: 0,
             dy: 0,
-            initialSelectedNodes: currentNodes.filter((node) => dragIds.has(node.id)).map((node) => ({ id: node.id, x: node.position.x, y: node.position.y })),
+            initialSelectedNodes,
+            movedIds: new Set(initialSelectedNodes.keys()),
         };
         historyPausedRef.current = true;
         nodeDraggingRef.current = true;
@@ -1525,22 +1540,22 @@ function InfiniteCanvasPage() {
         }
         if (!dragRef.current.isDraggingNode) return;
 
-        const wasClick = !dragRef.current.hasMoved && dragRef.current.initialSelectedNodes.length === 1;
-        const clickedNodeId = dragRef.current.initialSelectedNodes[0]?.id;
+        const wasClick = !dragRef.current.hasMoved && dragRef.current.initialSelectedNodes.size === 1;
+        const clickedNodeId = dragRef.current.initialSelectedNodes.keys().next().value;
         const currentViewport = viewportRef.current;
         const dx = clientX == null ? 0 : (clientX - dragRef.current.startX) / currentViewport.k;
         const dy = clientY == null ? 0 : (clientY - dragRef.current.startY) / currentViewport.k;
         const initialPositions = dragRef.current.initialSelectedNodes;
+        const movedIds = dragRef.current.movedIds;
 
         historyPausedRef.current = false;
         nodeDraggingRef.current = false;
         setIsNodeDragging(false);
         setDropTargetGroupId(null);
         if (dragRef.current.hasMoved && clientX != null && clientY != null) {
-            const movedIds = new Set(initialPositions.map((item) => item.id));
             setNodes((prev) => {
                 const moved = prev.map((node) => {
-                    const initial = initialPositions.find((item) => item.id === node.id);
+                    const initial = initialPositions.get(node.id);
                     return initial ? { ...node, position: { x: initial.x + dx, y: initial.y + dy } } : node;
                 });
                 const targetGroup = findGroupDropTarget(movedIds, moved);
@@ -1558,7 +1573,8 @@ function InfiniteCanvasPage() {
         dragRef.current.hasMoved = false;
         dragRef.current.dx = 0;
         dragRef.current.dy = 0;
-        dragRef.current.initialSelectedNodes = [];
+        dragRef.current.initialSelectedNodes = new Map();
+        dragRef.current.movedIds = new Set();
         nodeDragVisualsRef.current = null;
         if (wasClick && clickedNodeId) {
             const clickedNode = nodesRef.current.find((node) => node.id === clickedNodeId);
@@ -1583,21 +1599,21 @@ function InfiniteCanvasPage() {
                 const dx = (event.clientX - dragRef.current.startX) / currentViewport.k;
                 const dy = (event.clientY - dragRef.current.startY) / currentViewport.k;
                 const initialPositions = dragRef.current.initialSelectedNodes;
+                const movedIds = dragRef.current.movedIds;
                 if (Math.abs(event.clientX - dragRef.current.startX) > 3 || Math.abs(event.clientY - dragRef.current.startY) > 3) {
                     dragRef.current.hasMoved = true;
                 }
                 dragRef.current.dx = dx;
                 dragRef.current.dy = dy;
 
-                const movedIds = new Set(initialPositions.map((item) => item.id));
-                const previewNodes = nodesRef.current.map((node) => {
-                    const initial = initialPositions.find((item) => item.id === node.id);
-                    return initial ? { ...node, position: { x: initial.x + dx, y: initial.y + dy } } : node;
-                });
-                setDropTargetGroupId(findGroupDropTarget(movedIds, previewNodes)?.id || null);
-
+                // Drop-target detection and node updates both run once per frame; mousemove can fire far more often than the display refreshes.
                 if (rafRef.current) cancelAnimationFrame(rafRef.current);
                 rafRef.current = requestAnimationFrame(() => {
+                    const previewNodes = nodesRef.current.map((node) => {
+                        const initial = initialPositions.get(node.id);
+                        return initial ? { ...node, position: { x: initial.x + dx, y: initial.y + dy } } : node;
+                    });
+                    setDropTargetGroupId(findGroupDropTarget(movedIds, previewNodes)?.id || null);
                     applyNodeDragVisuals(nodeDragVisualsRef.current, dragRef.current.dx, dragRef.current.dy);
                     rafRef.current = null;
                 });
@@ -1705,7 +1721,7 @@ function InfiniteCanvasPage() {
         }
         const world = containerRef.current?.querySelector("[data-canvas-world]");
         if (!world) return;
-        const initialById = new Map(dragRef.current.initialSelectedNodes.map((item) => [item.id, item]));
+        const initialById = dragRef.current.initialSelectedNodes;
         const dragged = new Set(initialById.keys());
         const cacheNodes = nodesRef.current.flatMap((node) => {
             const el = world.querySelector(`[data-node-id="${CSS.escape(node.id)}"]`);
@@ -1992,7 +2008,6 @@ function InfiniteCanvasPage() {
                         naturalHeight: image.naturalHeight,
                         bytes: image.bytes,
                         mimeType: image.mimeType,
-                        ...canvasImagePreviewFields(image),
                         primaryImageId: image.id,
                     },
                 };
@@ -2018,7 +2033,6 @@ function InfiniteCanvasPage() {
                 naturalHeight: image.naturalHeight,
                 bytes: image.bytes,
                 mimeType: image.mimeType,
-                ...canvasImagePreviewFields(image),
                 status: NODE_STATUS_SUCCESS,
                 prompt: node.metadata?.prompt,
                 generationType: node.metadata?.generationType,
@@ -2755,7 +2769,6 @@ function InfiniteCanvasPage() {
                                                 naturalHeight: item.naturalHeight,
                                                 bytes: item.bytes,
                                                 mimeType: item.mimeType,
-                                                ...canvasImagePreviewFields(item),
                                                 images,
                                                 primaryImageId: imageId,
                                             },
@@ -3236,6 +3249,7 @@ function InfiniteCanvasPage() {
     const insertAssistantImage = useCallback(
         async (image: CanvasAssistantImage) => {
             const storedImage = image.storageKey ? { url: image.dataUrl, storageKey: image.storageKey, width: 1, height: 1, bytes: 0, mimeType: "image/png" } : await uploadImage(image.dataUrl);
+            await ensureImagePreview(storedImage.storageKey);
             const meta = storedImage.width === 1 && storedImage.height === 1 ? await readImageMeta(storedImage.url) : storedImage;
             const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
             const config = nodeSizeFromNatural(meta.width, meta.height, spec.width, spec.height);
@@ -3464,35 +3478,28 @@ function InfiniteCanvasPage() {
                     onDrop={handleDrop}
                 >
                     <svg data-connection-layer className="absolute overflow-visible" style={{ left: connectionBounds.x, top: connectionBounds.y, width: connectionBounds.width, height: connectionBounds.height, pointerEvents: "none", zIndex: 0 }} viewBox={`${connectionBounds.x} ${connectionBounds.y} ${connectionBounds.width} ${connectionBounds.height}`}>
-                        {connections
-                            .map((connection) => {
-                                const from = nodeById.get(connection.fromNodeId);
-                                const to = nodeById.get(connection.toNodeId);
-                                if (!from || !to) return null;
-
-                                return (
-                                    <ConnectionPath
-                                        key={connection.id}
-                                        connection={connection}
-                                        from={from}
-                                        to={to}
-                                        selected={selectedConnectionIds.has(connection.id)}
-                                        active={relatedHighlight.connectionIds.has(connection.id)}
-                                        scale={viewport.k}
-                                        onCut={connectingParams || selectionBox ? undefined : () => deleteConnection(connection.id)}
-                                        onSelect={() => {
-                                            setSelectedConnectionIds(new Set([connection.id]));
-                                            setSelectedNodeIds(new Set());
-                                            setContextMenu(null);
-                                        }}
-                                        onContextMenu={(event) => {
-                                            setSelectedConnectionIds(new Set([connection.id]));
-                                            setSelectedNodeIds(new Set());
-                                            setContextMenu({ type: "connection", x: event.clientX, y: event.clientY, connectionId: connection.id });
-                                        }}
-                                    />
-                                );
-                            })}
+                        {visibleConnections.map(({ connection, from, to }) => (
+                            <ConnectionPath
+                                key={connection.id}
+                                connection={connection}
+                                from={from}
+                                to={to}
+                                selected={selectedConnectionIds.has(connection.id)}
+                                active={relatedHighlight.connectionIds.has(connection.id)}
+                                scale={viewport.k}
+                                onCut={connectingParams || selectionBox ? undefined : () => deleteConnection(connection.id)}
+                                onSelect={() => {
+                                    setSelectedConnectionIds(new Set([connection.id]));
+                                    setSelectedNodeIds(new Set());
+                                    setContextMenu(null);
+                                }}
+                                onContextMenu={(event) => {
+                                    setSelectedConnectionIds(new Set([connection.id]));
+                                    setSelectedNodeIds(new Set());
+                                    setContextMenu({ type: "connection", x: event.clientX, y: event.clientY, connectionId: connection.id });
+                                }}
+                            />
+                        ))}
                         {connectingParams ? <ActiveConnectionPath node={nodeById.get(connectingParams.nodeId)} handle={connectingParams} mouseWorld={mouseWorld} target={connectionTargetNodeId ? nodeById.get(connectionTargetNodeId) : undefined} /> : null}
                     </svg>
 

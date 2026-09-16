@@ -15,6 +15,7 @@ export type CanvasResourceReference = {
     label: string;
     title: string;
     previewUrl?: string;
+    storageKey?: string;
     text?: string;
     active: boolean;
 };
@@ -124,6 +125,7 @@ function labelResourceNodes(nodes: CanvasNodeData[], active: boolean) {
                 label,
                 title: node.title || label,
                 previewUrl: canvasNodeDisplaySrc(node) || resource?.url,
+                storageKey: node.metadata?.storageKey,
                 text: resourceText(node),
                 active,
             },

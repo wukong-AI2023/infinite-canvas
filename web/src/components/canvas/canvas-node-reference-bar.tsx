@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { FileText, Image as ImageIcon, Music2, Plus, Video, X } from "lucide-react";
 import { Popover } from "antd";
+import { useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
+import { getImagePreviewRevision, previewUrlFor, subscribeImagePreviews } from "@/services/image-storage";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 export function CanvasNodeReferenceBar({ nodeId, references, onInsert, onRemove, onReorder, onStartSelection }: { nodeId: string; references: CanvasResourceReference[]; onInsert?: (reference: CanvasResourceReference) => void; onRemove?: (nodeId: string) => void; onReorder?: (nodeIds: string[]) => void; onStartSelection?: (nodeId: string) => void }) {
@@ -96,7 +98,9 @@ export function CanvasNodeReferenceBar({ nodeId, references, onInsert, onRemove,
 function ReferenceItem({ reference, number, dragging, popoverOpen, onClick, onRemove, onDragStart, onDragOverItem, onDragEnd, onDrop }: { reference: CanvasResourceReference; number: number; dragging: boolean; popoverOpen?: boolean; onClick: () => void; onRemove?: () => void; onDragStart: (event: DragEvent<HTMLDivElement>) => void; onDragOverItem: (event: DragEvent<HTMLDivElement>) => void; onDragEnd: () => void; onDrop: (event: DragEvent<HTMLDivElement>) => void }) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
     const Icon = reference.kind === "image" ? ImageIcon : reference.kind === "video" ? Video : reference.kind === "audio" ? Music2 : FileText;
+    const thumbnail = previewUrlFor(reference.storageKey) || reference.previewUrl;
     return (
         <Popover open={popoverOpen} placement="topLeft" mouseEnterDelay={0.15} content={<ReferencePreview reference={reference} />}>
             <div
@@ -111,7 +115,7 @@ function ReferenceItem({ reference, number, dragging, popoverOpen, onClick, onRe
                 onDrop={onDrop}
             >
                 <span className="grid size-full place-items-center overflow-hidden rounded-[inherit]">
-                    {reference.kind === "image" && reference.previewUrl ? <img src={reference.previewUrl} alt="" className="size-full object-cover" draggable={false} loading="lazy" decoding="async" /> : reference.kind === "video" && reference.previewUrl ? <video src={reference.previewUrl} className="size-full object-cover" muted draggable={false} /> : <Icon className="size-4 opacity-65" />}
+                    {reference.kind === "image" && thumbnail ? <img src={thumbnail} alt="" className="size-full object-cover" draggable={false} loading="lazy" decoding="async" /> : reference.kind === "video" && reference.previewUrl ? <video src={reference.previewUrl} className="size-full object-cover" muted draggable={false} /> : <Icon className="size-4 opacity-65" />}
                 </span>
                 <span className="pointer-events-none absolute left-0.5 top-0.5 grid min-w-4 place-items-center rounded px-1 text-[10px] font-semibold leading-4" style={{ background: theme.toolbar.panel, color: theme.node.text }}>{number}</span>
                 {onRemove ? <button type="button" draggable={false} className="absolute right-0 top-0 grid size-5 place-items-center rounded-full border opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border }} aria-label={t("canvas.references.remove")} title={t("canvas.references.remove")} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRemove(); }}><X className="size-3" /></button> : null}
