@@ -1,5 +1,6 @@
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import i18n from "@/i18n";
+import { canvasNodeDisplaySrc } from "@/lib/canvas/canvas-image-preview";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { imageToDataUrl } from "@/services/image-storage";
@@ -18,8 +19,10 @@ export type CanvasResourceReference = {
     active: boolean;
 };
 
+export const CANVAS_REFERENCE_PATTERN = /@\[node:([^\]]+)\]/g;
+
 export function buildNodeMentionReferences(node: CanvasNodeData, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
-    return labelResourceNodes(getMentionResourceNodes(node.id, nodes, connections), true);
+    return labelResourceNodes(getOrderedReferenceNodes(node.id, nodes, connections), true);
 }
 
 export function buildCanvasResourceReferences(nodes: CanvasNodeData[]) {
@@ -32,7 +35,7 @@ export async function resolveCanvasReferenceImages(references: CanvasResourceRef
         const node = nodesById.get(reference.nodeId);
         if (!node) throw new Error(i18n.t("agent.composer.mentions.resourceMissing", { title: reference.title }));
         const metadata = node.metadata;
-        const dataUrl = await imageToDataUrl({ storageKey: metadata?.storageKey, url: reference.previewUrl });
+        const dataUrl = await imageToDataUrl({ storageKey: metadata?.storageKey, url: metadata?.content });
         if (!dataUrl.startsWith("data:image/")) throw new Error(i18n.t("agent.composer.mentions.imageReadFailed", { title: reference.title }));
         const meta = metadata?.naturalWidth && metadata.naturalHeight
             ? { width: metadata.naturalWidth, height: metadata.naturalHeight, mimeType: metadata.mimeType || dataUrl.match(/^data:([^;]+)/)?.[1] || "image/png" }
@@ -44,29 +47,37 @@ export async function resolveCanvasReferenceImages(references: CanvasResourceRef
             size: metadata?.bytes || getDataUrlByteSize(dataUrl),
             width: meta.width,
             height: meta.height,
-            url: reference.previewUrl || dataUrl,
+            url: metadata?.content || dataUrl,
             dataUrl,
         };
     }));
 }
 
 export function getMentionResourceNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
-    const configInputs = expandGroupResourceNodes(getConnectedConfigInputNodes(nodeId, nodes, connections), nodes);
-    if (configInputs.length) return configInputs;
-    const ownInputs = expandGroupResourceNodes(getContextInputNodes(nodeId, nodes, connections), nodes);
-    if (ownInputs.length) return ownInputs;
-    const node = nodes.find((item) => item.id === nodeId);
-    return node && isResourceNode(node) ? [node] : [];
+    return getOrderedReferenceNodes(nodeId, nodes, connections);
 }
 
 export function getGenerationResourceNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
-    const configInputs = getConnectedConfigInputNodes(nodeId, nodes, connections);
-    if (configInputs.length) return configInputs;
-    const ownInputs = getContextInputNodes(nodeId, nodes, connections);
-    if (ownInputs.length) return ownInputs;
-    return [];
+    return getOrderedReferenceNodes(nodeId, nodes, connections);
 }
 
+export function getOrderedReferenceNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
+    const target = nodes.find((node) => node.id === nodeId);
+    if (!target) return [];
+    const configInputs = expandGroupResourceNodes(getConnectedConfigInputNodes(nodeId, nodes, connections), nodes);
+    const ownInputs = expandGroupResourceNodes(getContextInputNodes(nodeId, nodes, connections), nodes);
+    const resources = (configInputs.length ? configInputs : ownInputs).filter((node) => node.id !== target.id);
+    const excluded = new Set(target.metadata?.referenceExcludedNodeIds || []);
+    const available = resources.filter((node) => !excluded.has(node.id));
+    const byId = new Map(available.map((node) => [node.id, node]));
+    const ordered = (target.metadata?.referenceOrder || []).flatMap((id) => {
+        const node = byId.get(id);
+        if (!node) return [];
+        byId.delete(id);
+        return [node];
+    });
+    return [...ordered, ...byId.values()];
+}
 function getContextInputNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
     return connections
         .filter((connection) => connection.toNodeId === nodeId)
@@ -112,7 +123,7 @@ function labelResourceNodes(nodes: CanvasNodeData[], active: boolean) {
                 kind,
                 label,
                 title: node.title || label,
-                previewUrl: node.metadata?.content || resource?.url,
+                previewUrl: canvasNodeDisplaySrc(node) || resource?.url,
                 text: resourceText(node),
                 active,
             },

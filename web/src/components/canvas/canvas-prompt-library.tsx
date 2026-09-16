@@ -17,10 +17,12 @@ export function CanvasPromptLibrary({ onSelect }: { onSelect: (prompt: string) =
             <Tooltip title={t("navigation.prompts")}>
                 <Button
                     type="text"
-                    className="!h-8 !w-8 !min-w-8 shrink-0 !rounded-full !bg-transparent !p-0"
-                    style={{ color: theme.node.text }}
+                    className="!h-8 !w-8 !min-w-8 shrink-0 !rounded-lg !p-0 transition-colors"
+                    style={{ background: open ? theme.toolbar.activeBg : "transparent", color: open ? theme.toolbar.activeText : theme.node.text }}
                     icon={<BookOpen className="size-3.5" />}
                     onClick={() => setOpen(true)}
+                    onMouseEnter={(event) => { if (!open) event.currentTarget.style.background = theme.toolbar.itemHover; }}
+                    onMouseLeave={(event) => { if (!open) event.currentTarget.style.background = "transparent"; }}
                     aria-label={t("navigation.prompts")}
                 />
             </Tooltip>

@@ -3,11 +3,11 @@ import axios from "axios";
 import i18n from "@/i18n";
 import { buildApiUrl, resolveModelRequestConfig, resolveModelScript, type AiConfig, type ModelChannel } from "@/stores/use-config-store";
 import { axiosDirectThenProxy, requestDirectThenProxy } from "./local-proxy";
-import { normalizePluginImages, runModelPlugin } from "./model-plugin";
+import { extractPluginImages, normalizePluginImages, runModelPlugin } from "./model-plugin";
 import { nanoid } from "nanoid";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
-import { imageToDataUrl } from "@/services/image-storage";
+import { imageToDataUrl, prepareReferenceImageDataUrl } from "@/services/image-storage";
 import { imageSizePresets, inferMediaScale } from "@/lib/media-size";
 import { imageScriptPanelRows, matchScriptResolution, parseModelScriptSettings, scriptImageQuality, scriptImageSize } from "@/lib/model-script-settings";
 import type { ReferenceImage } from "@/types/image";
@@ -84,6 +84,7 @@ type GeminiPart = {
     inlineData?: { mimeType?: string; data?: string };
     inline_data?: { mime_type?: string; mimeType?: string; data?: string };
     fileData?: { mimeType?: string; fileUri?: string };
+    file_data?: { mime_type?: string; file_uri?: string };
     functionCall?: { id?: string; name?: string; args?: Record<string, unknown> };
     functionResponse?: { id?: string; name?: string; response?: Record<string, unknown> };
     thoughtSignature?: string;
@@ -98,6 +99,7 @@ type GeminiPayload = {
 };
 type GeminiStreamState = { buffer: string; text: string; toolCalls: ResponseToolCall[]; error?: string };
 type RequestOptions = { signal?: AbortSignal };
+const IMAGE_REFERENCE_LIMIT = 20;
 
 const QUALITY_BASE: Record<string, number> = {
     low: 1024,
@@ -332,24 +334,35 @@ function readAxiosError(error: unknown, fallback: string) {
     if (axios.isCancel(error)) return apiText("requestCanceled");
     if (axios.isAxiosError(error)) {
         if (!error.response && error.code === "ERR_NETWORK") return apiText("requestFailed");
+        if (error.response?.status === 413) return apiText("imagePayloadTooLarge");
         const responseData = error.response?.data;
         // Prefer the API error from the response body.
         const apiMsg = readApiErrorMessage(responseData);
-        if (apiMsg) return apiMsg;
+        if (apiMsg) return normalizeImageProviderError(apiMsg);
         // Infer the error from the HTTP status when the response body has no usable message.
         const statusMsg = readStatusError(error.response?.status, fallback);
         if (statusMsg) return statusMsg;
         // Fall back to Axios's own error message.
-        return error.message || fallback;
+        return normalizeImageProviderError(error.message || fallback);
     }
     if (error instanceof DOMException && error.name === "AbortError") return apiText("requestCanceled");
-    return error instanceof Error ? readApiErrorMessage(error.message) || error.message : fallback;
+    const message = error instanceof Error ? readApiErrorMessage(error.message) || error.message : fallback;
+    return normalizeImageProviderError(message);
+}
+
+function normalizeImageProviderError(message: string) {
+    if (/\b413\b|payload too large|request entity too large|content too large|body too large/i.test(message)) return apiText("imagePayloadTooLarge");
+    if (/filtered\s*by the safety system|blocked for safety reasons|safety (system|filter|reasons)|content (was )?(filtered|blocked)|prompt.*blocked/i.test(message)) return apiText("imageSafetyFiltered");
+    if (/\b451\b|unavailable for legal reasons/i.test(message)) return apiText("unavailableForLegalReasons");
+    return message;
 }
 
 function readStatusError(status: number | undefined, fallback: string) {
     if (status === 401 || status === 403) return apiText("authenticationFailed");
     if (status === 429) return apiText("rateLimited");
     if (status === 404) return apiText("notFound");
+    if (status === 413) return apiText("imagePayloadTooLarge");
+    if (status === 451) return apiText("unavailableForLegalReasons");
     if (status === 502) return apiText("badGateway");
     if (status === 503) return apiText("serviceBusy");
     return status ? apiText("httpFailed", { status }) : fallback;
@@ -719,7 +732,7 @@ async function requestGeminiImagesOnce(config: AiConfig, prompt: string, referen
         method: "post",
         url: geminiApiUrl(config, "generateContent"),
         data: {
-            ...toGeminiBody(config, [{ role: "user", content: prompt }], { generationConfig: { responseModalities: ["TEXT", "IMAGE"], ...resolveGeminiImageConfig(config) } }),
+            ...toGeminiBody(config, [{ role: "user", content: prompt }], { generationConfig: { responseModalities: ["IMAGE", "TEXT"], ...resolveGeminiImageConfig(config) } }),
             contents: [{ role: "user", parts }],
         },
         headers: geminiHeaders(config),
@@ -729,17 +742,10 @@ async function requestGeminiImagesOnce(config: AiConfig, prompt: string, referen
 }
 
 function parseGeminiImagePayload(payload: GeminiPayload) {
+    const nested = (payload as unknown as { data?: GeminiPayload }).data;
     validateGeminiPayload(payload);
-    const images =
-        payload.candidates
-            ?.flatMap((candidate) => candidate.content?.parts || [])
-            .map((part) => {
-                const inlineData = part.inlineData || (part.inline_data ? { mimeType: part.inline_data.mimeType || part.inline_data.mime_type, data: part.inline_data.data } : undefined);
-                if (inlineData?.data) return `data:${inlineData.mimeType || "image/png"};base64,${inlineData.data}`;
-                return part.fileData?.fileUri || null;
-            })
-            .filter((value): value is string => Boolean(value))
-            .map((dataUrl) => ({ id: nanoid(), dataUrl })) || [];
+    if (nested) validateGeminiPayload(nested);
+    const images = extractPluginImages(payload).map((dataUrl) => ({ id: nanoid(), dataUrl }));
     if (!images.length) throw new Error(apiText("geminiNoImage"));
     return images;
 }
@@ -799,13 +805,26 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
     }
 }
 
+async function prepareModelReferences(references: ReferenceImage[], options?: RequestOptions) {
+    if (references.length > IMAGE_REFERENCE_LIMIT) throw new Error(apiText("imageReferenceLimit", { count: IMAGE_REFERENCE_LIMIT }));
+    const prepared: ReferenceImage[] = [];
+    for (const image of references) {
+        const dataUrl = await prepareReferenceImageDataUrl(image, options);
+        const type = dataUrl.match(/^data:([^;]+)/)?.[1] || "image/png";
+        const extension = type === "image/jpeg" ? "jpg" : "png";
+        prepared.push({ ...image, name: (image.name.replace(/\.[^.]+$/, "") || "reference") + "." + extension, type, dataUrl });
+    }
+    return prepared;
+}
+
 export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[], options?: RequestOptions) {
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const requestPrompt = buildImageReferencePromptText(prompt, references);
+    const preparedReferences = await prepareModelReferences(references, options);
     const script = resolveModelScript(config, config.model || config.imageModel);
     if (script) {
-        const refs = await Promise.all(references.map((image) => imageToDataUrl(image)));
+        const refs = preparedReferences.map((image) => image.dataUrl);
         try {
             const result = await runModelPlugin({
                 capability: "image",
@@ -823,7 +842,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     }
     if (requestConfig.apiFormat === "gemini") {
         try {
-            return await requestGeminiImages(requestConfig, requestPrompt, references, n, options);
+            return await requestGeminiImages(requestConfig, requestPrompt, preparedReferences, n, options);
         } catch (error) {
             throw new Error(readAxiosError(error, apiText("requestFailed")));
         }
@@ -850,7 +869,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     if (background) {
         formData.set("background", background);
     }
-    const files = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
+    const files = preparedReferences.map(dataUrlToFile);
     const imageField = files.length > 1 ? "image[]" : "image";
     files.forEach((file) => formData.append(imageField, file));
 

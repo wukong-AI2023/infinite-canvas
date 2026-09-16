@@ -7,6 +7,9 @@ import { formatBytes } from "@/lib/image-utils";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { buildNodeContext } from "@/lib/canvas/plugin-node-context";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { captureVideoFrame } from "@/lib/canvas/canvas-video-frame";
+import { canvasImageDisplaySrc } from "@/lib/canvas/canvas-image-preview";
+import { isCanvasTextContextTarget, readCanvasScale } from "@/components/canvas/infinite-canvas";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
 import { CanvasNodeType, type CanvasNodeData, type CanvasNodeImage, type CanvasNodeText, type Position } from "@/types/canvas";
 import type { CanvasNodeContext, CanvasPluginHost } from "@/types/canvas-plugin";
@@ -19,7 +22,6 @@ type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
 type CanvasNodeProps = {
     data: CanvasNodeData;
-    scale: number;
     isSelected: boolean;
     isRelated: boolean;
     isFocusRelated: boolean;
@@ -84,7 +86,6 @@ type NodeContentRendererProps = {
 
 export const CanvasNode = React.memo(function CanvasNode({
     data,
-    scale,
     isSelected,
     isRelated,
     isFocusRelated,
@@ -123,9 +124,10 @@ export const CanvasNode = React.memo(function CanvasNode({
 }: CanvasNodeProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const { t } = useTranslation();
+    const rootRef = useRef<HTMLDivElement | null>(null);
     const [hovered, setHovered] = useState(false);
     const definition = getNodeDefinition(data.type);
-    const pluginContext = useMemo<CanvasNodeContext | null>(() => (pluginHost ? buildNodeContext(pluginHost, data, theme, scale, isSelected) : null), [pluginHost, data, theme, scale, isSelected]);
+    const pluginContext = useMemo<CanvasNodeContext | null>(() => (pluginHost ? buildNodeContext(pluginHost, data, theme, 1, isSelected) : null), [pluginHost, data, theme, isSelected]);
     const [isEditingContent, setIsEditingContent] = useState(false);
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [titleDraft, setTitleDraft] = useState(data.title || "");
@@ -222,6 +224,7 @@ export const CanvasNode = React.memo(function CanvasNode({
         (event: MouseEvent) => {
             if (!resizeRef.current.isResizing) return;
 
+            const scale = Math.max(readCanvasScale(rootRef.current), 0.25);
             const dx = (event.clientX - resizeRef.current.startX) / scale;
             const dy = (event.clientY - resizeRef.current.startY) / scale;
             const minWidth = 220;
@@ -256,7 +259,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 y: fromTop ? startBottom - height : resizeRef.current.startTop,
             });
         },
-        [data.id, onResize, scale],
+        [data.id, onResize],
     );
 
     const handleResizeUp = useCallback(() => {
@@ -295,6 +298,7 @@ export const CanvasNode = React.memo(function CanvasNode({
 
     return (
         <div
+            ref={rootRef}
             data-node-id={data.id}
             className={`node-element absolute flex select-none flex-col transition-shadow duration-200 ${isGroup ? "z-[5]" : isSelected ? "z-50" : "z-10"} ${referenceSelectionState === "available" ? "cursor-pointer" : referenceSelectionState ? "cursor-not-allowed" : ""}`}
             style={{
@@ -316,6 +320,10 @@ export const CanvasNode = React.memo(function CanvasNode({
                 if (!referenceSelectionState) onSelectCapture?.(event, data.id);
             }}
             onContextMenu={(event) => {
+                if (isCanvasTextContextTarget(event.target)) {
+                    event.stopPropagation();
+                    return;
+                }
                 if (referenceSelectionState) event.preventDefault();
                 else onContextMenu(event, data.id);
             }}
@@ -423,6 +431,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                             onViewBatchImage={(imageId) => onViewImage?.(data, imageId)}
                             groupChildCount={groupChildCount}
                         />
+                        <GenerationElapsedBadge node={data} theme={theme} />
                     </div>
 
                     {showImageInfo && hasImageContent ? <ImageInfoBar node={data} /> : null}
@@ -447,10 +456,37 @@ export const CanvasNode = React.memo(function CanvasNode({
             {!referenceSelectionState && !isGroup ? <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} /> : null}
             {!referenceSelectionState && (definition?.hasSourceHandle ?? true) && data.type !== CanvasNodeType.Config ? <ConnectionHandleDot side="right" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "source")} /> : null}
 
-            {showPanel && !isGroup && renderPanel ? <div className="absolute left-1/2 top-full z-[70] w-[638px] pt-4" style={{ transform: `translateX(-50%) scale(${1 / Math.max(scale, 0.25)})`, transformOrigin: "top center" }}>{renderPanel(data)}</div> : null}
+            {showPanel && !isGroup && renderPanel ? <div className="absolute left-1/2 top-full z-[70] w-[638px] pt-4" style={{ transform: "translateX(-50%) scale(calc(1 / max(var(--canvas-k, 1), 0.25)))", transformOrigin: "top center" }}>{renderPanel(data)}</div> : null}
         </div>
     );
 });
+
+function GenerationElapsedBadge({ node, theme }: Pick<NodeContentRendererProps, "node" | "theme">) {
+    const startedAt = node.metadata?.generationStartedAt;
+    const durationMs = node.metadata?.generationDurationMs;
+    const loading = node.metadata?.status === "loading";
+    const hasBatchCount = node.type === CanvasNodeType.Image && (node.metadata?.images?.length || 0) > 1;
+    const [now, setNow] = useState(() => Date.now());
+
+    useEffect(() => {
+        if (!loading || !startedAt) return;
+        setNow(Date.now());
+        const timer = window.setInterval(() => setNow(Date.now()), 1000);
+        return () => window.clearInterval(timer);
+    }, [loading, startedAt]);
+
+    const live = loading && startedAt !== undefined;
+    if ((node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Video) || (!live && (durationMs === undefined || node.metadata?.generationTimerHidden))) return null;
+    const elapsedMs = live ? now - (startedAt ?? now) : durationMs || 0;
+    return (
+        <span
+            className={`pointer-events-none absolute top-3 z-[60] rounded-md px-1.5 py-0.5 text-[14px] font-bold tabular-nums ${hasBatchCount ? "right-[68px]" : "right-3"}`}
+            style={{ background: theme.toolbar.panel, color: theme.node.text, transform: "scale(1.3)", transformOrigin: "top right" }}
+        >
+            {Math.max(0, Math.floor(elapsedMs / 1000))}s
+        </span>
+    );
+}
 
 function NodeContent(props: NodeContentRendererProps) {
     if (props.node.type === CanvasNodeType.Config && props.renderNodeContent) return props.renderNodeContent(props.node);
@@ -706,10 +742,75 @@ function EmptyImageContent({ theme }: NodeContentRendererProps) {
     return <div className="flex h-full w-full items-center justify-center" style={{ color: theme.node.placeholder }}><ImageIcon className="size-[59px] opacity-35" strokeWidth={1.8} /></div>;
 }
 
+let posterActive = 0;
+const posterWaiters: Array<() => void> = [];
+function acquirePosterSlot() {
+    if (posterActive < 2) {
+        posterActive += 1;
+        return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => posterWaiters.push(resolve));
+}
+function releasePosterSlot() {
+    const next = posterWaiters.shift();
+    if (next) next();
+    else posterActive = Math.max(0, posterActive - 1);
+}
+
 function VideoNodeContent({ node, theme }: NodeContentRendererProps) {
-    if (!node.metadata?.content)
+    const content = node.metadata?.content;
+    const [playing, setPlaying] = useState(false);
+    const [poster, setPoster] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!content || playing) return;
+        let cancelled = false;
+        let objectUrl: string | null = null;
+        void (async () => {
+            await acquirePosterSlot();
+            try {
+                if (cancelled) return;
+                const blob = await captureVideoFrame(content, "first", 0);
+                if (cancelled) return;
+                objectUrl = URL.createObjectURL(blob);
+                setPoster(objectUrl);
+            } catch {
+                if (!cancelled) setPoster("");
+            } finally {
+                releasePosterSlot();
+            }
+        })();
+        return () => {
+            cancelled = true;
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+        };
+    }, [content, playing]);
+
+    if (!content) {
         return <div className="flex h-full w-full items-center justify-center" style={{ color: theme.node.placeholder }}><SquarePlay className="size-[59px] opacity-35" strokeWidth={1.8} /></div>;
-    return <video src={node.metadata.content} controls className="h-full w-full bg-black object-cover" data-canvas-video={node.id} data-canvas-no-zoom />;
+    }
+    if (playing) {
+        return <video src={content} controls autoPlay className="h-full w-full bg-black object-cover" data-canvas-video={node.id} data-canvas-no-zoom />;
+    }
+    return (
+        <div className="relative h-full w-full bg-black">
+            {poster ? <img src={poster} alt={node.title} draggable={false} className="pointer-events-none h-full w-full object-cover" /> : null}
+            <button
+                type="button"
+                className="absolute left-1/2 top-1/2 z-10 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full text-white"
+                style={{ background: "rgba(0,0,0,.55)" }}
+                aria-label="play"
+                onPointerDown={(event) => event.stopPropagation()}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                    event.stopPropagation();
+                    setPlaying(true);
+                }}
+            >
+                <SquarePlay className="size-6" strokeWidth={1.8} />
+            </button>
+        </div>
+    );
 }
 
 function AudioNodeContent({ node, theme }: NodeContentRendererProps) {
@@ -755,7 +856,7 @@ function ImageContent({
     const isBatchRoot = batchCount > 1;
     const primaryImageId = node.metadata?.primaryImageId || images[0]?.id;
     const primaryImage = images.find((image) => image.id === primaryImageId);
-    const primaryContent = primaryImage?.content || node.metadata?.content;
+    const primaryContent = canvasImageDisplaySrc(primaryImage) || canvasImageDisplaySrc(node.metadata);
 
     return (
         <BatchFrame batchCount={batchCount} batchExpanded={batchExpanded}>
@@ -770,6 +871,8 @@ function ImageContent({
                         src={primaryContent}
                         alt={node.title}
                         draggable={false}
+                        loading="lazy"
+                        decoding="async"
                         onDragStart={(event) => event.preventDefault()}
                         className={`pointer-events-none block h-full w-full select-none ${node.metadata?.freeResize ? "object-fill" : "object-cover"}`}
                     />
@@ -836,7 +939,7 @@ function ExpandedImageCard({ node, image, index, onView, onSetPrimary, onDuplica
                 onView();
             }}
         >
-            {image.content ? <img src={image.content} alt={node.title} draggable={false} className="pointer-events-none h-full w-full select-none object-cover" /> : <ImageSlotStatus image={image} />}
+            {image.content ? <img src={canvasImageDisplaySrc(image)} alt={node.title} draggable={false} loading="lazy" decoding="async" className="pointer-events-none h-full w-full select-none object-cover" /> : <ImageSlotStatus image={image} />}
             {image.content ? (
                 <div className="absolute left-2.5 top-2.5 z-30 flex items-center gap-1">
                     <OverlayIconButton title={t("common.download")} onClick={onDownload} theme={theme}>

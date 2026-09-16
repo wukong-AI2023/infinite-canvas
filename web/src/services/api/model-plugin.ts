@@ -57,7 +57,197 @@ function isPluginMediaGet(url: string, method: string | undefined, responseType:
     }
 }
 
+
+function asPluginRecord(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function parsePluginJson(value: unknown): unknown {
+    if (typeof value !== "string") return value;
+    const text = value.trim();
+    if (!text.startsWith("{") && !text.startsWith("[")) return value;
+    try {
+        return JSON.parse(text);
+    } catch {
+        return value;
+    }
+}
+
+function pluginImageRef(value: unknown) {
+    if (typeof value !== "string") return "";
+    const text = value.trim();
+    if (/^(?:https?:\/\/|data:image\/)/i.test(text)) return text;
+    const markdown = text.match(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/i);
+    if (markdown?.[1]) return markdown[1];
+    const url = text.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || "";
+    return /\.(?:png|jpe?g|webp|gif|bmp)(?:\?|#|$)/i.test(url) ? url : "";
+}
+
+function pluginTextUrl(value: unknown, loose: boolean) {
+    const direct = pluginImageRef(value);
+    if (direct) return direct;
+    if (!loose || typeof value !== "string") return "";
+    const urls = value.match(/https?:\/\/[^\s"'<>]+/gi) || [];
+    return urls.length === 1 ? urls[0] : "";
+}
+
+function pluginInlineImage(value: unknown) {
+    const record = asPluginRecord(value);
+    const data = record && typeof record.data === "string" ? record.data : "";
+    if (!data) return "";
+    if (data.startsWith("data:image/") || /^https?:\/\//i.test(data)) return data;
+    if (data.length < 32 || /[\s{}]/.test(data)) return "";
+    return `data:${String(record?.mimeType || record?.mime_type || "image/png")};base64,${data}`;
+}
+
+function imageFromPluginPart(part: unknown, allowThought: boolean) {
+    const record = asPluginRecord(part);
+    if (!record) return pluginTextUrl(part, allowThought);
+    if (!allowThought && (record.thought === true || record.thought === "true")) return "";
+    const file = asPluginRecord(record.fileData || record.file_data);
+    const imageUrl = asPluginRecord(record.image_url || record.imageUrl);
+    return (
+        pluginInlineImage(record.inlineData || record.inline_data) ||
+        pluginImageRef(file?.fileUri || file?.file_uri || record.fileUri || record.file_uri) ||
+        pluginImageRef(imageUrl?.url || record.image_url || record.imageUrl || record.url || record.dataUrl) ||
+        pluginInlineImage(record) ||
+        pluginTextUrl(record.text, allowThought)
+    );
+}
+
+function pluginPayloads(value: unknown) {
+    const seen = new Set<Record<string, unknown>>();
+    const out: Record<string, unknown>[] = [];
+    const add = (item: unknown) => {
+        const rec = asPluginRecord(parsePluginJson(item));
+        if (!rec || seen.has(rec)) return;
+        seen.add(rec);
+        out.push(rec);
+        add(rec.data);
+        add(rec.result);
+        add(rec.response);
+        add(rec.payload);
+    };
+    add(value);
+    return out;
+}
+
+function collectBodyImages(body: Record<string, unknown>, add: (url: string) => void, allowThought: boolean) {
+    const imageUrl = asPluginRecord(body.image_url || body.imageUrl);
+    add(pluginImageRef(imageUrl?.url || body.url || body.dataUrl || body.file_uri || body.fileUri || body.image_url || body.imageUrl));
+    add(pluginInlineImage(body.inlineData || body.inline_data || body));
+    if (typeof body.data === "string") add(pluginImageRef(body.data) || pluginInlineImage({ data: body.data }));
+    const content = asPluginRecord(body.content);
+    if (Array.isArray(content?.parts)) {
+        for (const part of content.parts) add(imageFromPluginPart(part, allowThought));
+    }
+    const candidates = Array.isArray(body.candidates) ? body.candidates : [];
+    for (const candidate of candidates) {
+        const rec = asPluginRecord(candidate);
+        if (!rec) continue;
+        add(pluginImageRef(rec.url || rec.file_uri || rec.fileUri));
+        add(pluginInlineImage(rec.inlineData || rec.inline_data));
+        const next = asPluginRecord(rec.content);
+        add(pluginImageRef(next?.url || next?.file_uri || next?.fileUri));
+        const parts = Array.isArray(next?.parts) ? next.parts : Array.isArray(rec.parts) ? rec.parts : [];
+        for (const part of parts) add(imageFromPluginPart(part, allowThought));
+    }
+    for (const list of [body.data, body.images, body.output]) {
+        if (!Array.isArray(list)) continue;
+        for (const item of list) {
+            const record = asPluginRecord(item);
+            if (!record) {
+                add(pluginImageRef(item));
+                continue;
+            }
+            add(pluginImageRef(record.url || record.dataUrl));
+            if (typeof record.b64_json === "string" && record.b64_json) add(`data:image/png;base64,${record.b64_json}`);
+            add(imageFromPluginPart(record, allowThought));
+            const nested = asPluginRecord(record.content);
+            if (Array.isArray(nested?.parts)) {
+                for (const part of nested.parts) add(imageFromPluginPart(part, allowThought));
+            }
+        }
+    }
+    const choices = Array.isArray(body.choices) ? body.choices : [];
+    for (const choice of choices) {
+        const message = asPluginRecord(asPluginRecord(choice)?.message) || asPluginRecord(choice);
+        if (!message) continue;
+        if (Array.isArray(message.content)) {
+            for (const part of message.content) add(imageFromPluginPart(part, allowThought));
+        } else {
+            add(pluginTextUrl(message.content, allowThought));
+        }
+        const images = Array.isArray(message.images) ? message.images : [];
+        for (const img of images) add(imageFromPluginPart(img, allowThought));
+    }
+}
+
+export function extractPluginImages(payload: unknown): string[] {
+    const parsed = parsePluginJson(payload);
+    if (typeof parsed === "string") {
+        const url = pluginImageRef(parsed);
+        return url ? [url] : [];
+    }
+    if (Array.isArray(parsed)) {
+        return [...new Set(parsed.flatMap((item) => (typeof item === "string" ? [pluginImageRef(item)] : extractPluginImages(item)).filter(Boolean)))];
+    }
+    const urls: string[] = [];
+    const add = (url: string) => {
+        if (url && !urls.includes(url)) urls.push(url);
+    };
+    const bodies = pluginPayloads(parsed);
+    for (const body of bodies) collectBodyImages(body, add, false);
+    if (!urls.length) for (const body of bodies) collectBodyImages(body, add, true);
+    return urls;
+}
+
+function readPluginImages(result: unknown): string[] {
+    const items = Array.isArray(result) ? result : result == null ? [] : [result];
+    return [...new Set(items.flatMap((item) => {
+        if (typeof item === "string") return item ? [item] : [];
+        const record = asPluginRecord(item);
+        if (!record) return [];
+        if (typeof record.dataUrl === "string" && record.dataUrl) return [record.dataUrl];
+        if (typeof record.url === "string" && record.url) return [record.url];
+        if (typeof record.b64_json === "string" && record.b64_json) return [`data:image/png;base64,${record.b64_json}`];
+        return extractPluginImages(item);
+    }))];
+}
+
+function isMissingPluginImageError(message: string) {
+    return /未返回图片|没有返回图片|未找到图片|没有图片|no images?|did not return (an )?image/i.test(message);
+}
+
+function alignGeminiImageModalities(data: unknown) {
+    const body = asPluginRecord(data);
+    const config = asPluginRecord(body?.generationConfig) || asPluginRecord(body?.generation_config);
+    if (!config) return;
+    const existingKey = Array.isArray(config.responseModalities) ? "responseModalities" : Array.isArray(config.response_modalities) ? "response_modalities" : "";
+    const mods = existingKey ? (config[existingKey] as unknown[]).map((item) => String(item).toUpperCase()) : [];
+    if (mods.join(",") === "IMAGE,TEXT") return;
+    if (!mods.includes("IMAGE") && !asPluginRecord(config.imageConfig || config.image_config)) return;
+    config[existingKey || "responseModalities"] = ["IMAGE", "TEXT"];
+}
+
+function alignPluginRequestData(data: unknown) {
+    if (data == null || (typeof FormData !== "undefined" && data instanceof FormData)) return data;
+    if (typeof data === "string") {
+        const parsed = parsePluginJson(data);
+        if (parsed === data || !asPluginRecord(parsed)) return data;
+        alignGeminiImageModalities(parsed);
+        try {
+            return JSON.stringify(parsed);
+        } catch {
+            return data;
+        }
+    }
+    alignGeminiImageModalities(data);
+    return data;
+}
+
 async function pluginAxios(config: AiConfig, requestConfig: AxiosRequestConfig & { url: string }, options?: RequestOptions) {
+    requestConfig = { ...requestConfig, data: alignPluginRequestData(requestConfig.data) };
     const url = pluginUrl(config, requestConfig.url);
     const run = async (next: string) => {
         const response = await axios.request({ ...requestConfig, url: next, signal: options?.signal });
@@ -73,7 +263,7 @@ async function pluginAxios(config: AiConfig, requestConfig: AxiosRequestConfig &
     return requestDirectThenProxy(url, run);
 }
 
-function createPluginHttp(config: AiConfig, options?: RequestOptions): PluginHttp {
+function createPluginHttp(config: AiConfig, options?: RequestOptions, onResponse?: (value: unknown) => void): PluginHttp {
     const run = (method: "get" | "post", path: string, body: unknown, opts?: PluginHttpOptions) => {
         const isForm = typeof FormData !== "undefined" && body instanceof FormData;
         return pluginAxios(
@@ -87,7 +277,10 @@ function createPluginHttp(config: AiConfig, options?: RequestOptions): PluginHtt
                 responseType: opts?.responseType || "json",
             },
             options,
-        );
+        ).then((result) => {
+            onResponse?.(result);
+            return result;
+        });
     };
     return {
         url: (path) => pluginUrl(config, path),
@@ -97,22 +290,40 @@ function createPluginHttp(config: AiConfig, options?: RequestOptions): PluginHtt
 }
 
 /** Raw request with no automatic auth header — the script controls method, url, headers, body entirely. */
-function createPluginRequest(config: AiConfig, options?: RequestOptions) {
-    return (requestConfig: AxiosRequestConfig & { url: string }) => pluginAxios(config, requestConfig, options);
+function createPluginRequest(config: AiConfig, options?: RequestOptions, onResponse?: (value: unknown) => void) {
+    return async (requestConfig: AxiosRequestConfig & { url: string }) => {
+        const result = await pluginAxios(config, requestConfig, options);
+        onResponse?.(result);
+        return result;
+    };
 }
 
-function createPluginFetch(config: AiConfig, options?: RequestOptions): typeof fetch {
+function createPluginFetch(config: AiConfig, options?: RequestOptions, onResponse?: (value: unknown) => void): typeof fetch {
     return async (input, init) => {
+        let nextInit = init;
+        if (init && typeof init.body === "string") {
+            const aligned = alignPluginRequestData(init.body);
+            if (aligned !== init.body) nextInit = { ...init, body: aligned };
+        }
         const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        const method = init?.method || (input instanceof Request ? input.method : "GET");
+        const method = nextInit?.method || (input instanceof Request ? input.method : "GET");
         const media = isPluginMediaGet(url, method, undefined, config.baseUrl);
         const run = async (next: string) => {
             const nextInput = input instanceof Request ? new Request(next, input) : next;
-            const response = await fetch(nextInput, { ...init, signal: init?.signal ?? options?.signal, ...(media ? { referrerPolicy: init?.referrerPolicy || "no-referrer" } : {}) });
+            const response = await fetch(nextInput, { ...nextInit, signal: nextInit?.signal ?? options?.signal, ...(media ? { referrerPolicy: nextInit?.referrerPolicy || "no-referrer" } : {}) });
             if (media && (!response.ok || isBlockedMediaType(response.headers.get("content-type")))) throw mediaResponseError(response.status);
             return response;
         };
-        return media ? requestMedia(url, run) : requestDirectThenProxy(url, run);
+        const response = media ? await requestMedia(url, run) : await requestDirectThenProxy(url, run);
+        if (onResponse) {
+            try {
+                const type = response.headers.get("content-type") || "";
+                if (/json|text/i.test(type)) onResponse(parsePluginJson(await response.clone().text()));
+            } catch {
+                /* ignore non-json bodies */
+            }
+        }
+        return response;
     };
 }
 
@@ -155,10 +366,12 @@ function createPoll(signal?: AbortSignal) {
  */
 export async function runModelPlugin<T = unknown>(args: RunPluginArgs): Promise<T> {
     const { config } = args;
-    const http = createPluginHttp(config, { signal: args.signal });
-    const request = createPluginRequest(config, { signal: args.signal });
+    const collectedImages: string[] = [];
+    const collectImages = (value: unknown) => collectedImages.push(...extractPluginImages(value));
+    const http = createPluginHttp(config, { signal: args.signal }, collectImages);
+    const request = createPluginRequest(config, { signal: args.signal }, collectImages);
     const poll = createPoll(args.signal);
-    const pluginFetch = createPluginFetch(config, { signal: args.signal });
+    const pluginFetch = createPluginFetch(config, { signal: args.signal }, collectImages);
     const runner = new Function(
         "prompt",
         "images",
@@ -181,7 +394,7 @@ export async function runModelPlugin<T = unknown>(args: RunPluginArgs): Promise<
         `"use strict"; return (async (fetch) => {\n${args.script}\n})(pluginFetch);`,
     ) as (...fnArgs: unknown[]) => Promise<T>;
     try {
-        return await runner(
+        const result = await runner(
             args.prompt || "",
             args.images || [],
             args.videos || [],
@@ -201,10 +414,20 @@ export async function runModelPlugin<T = unknown>(args: RunPluginArgs): Promise<
             args.onDelta,
             pluginFetch,
         );
+        if (args.capability === "image") {
+            const images = readPluginImages(result);
+            if (images.length) return images as T;
+            const fallback = [...new Set(collectedImages)];
+            if (fallback.length) return fallback as T;
+        }
+        return result;
     } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") throw error;
         if (axios.isCancel(error)) throw error;
         const message = error instanceof Error ? error.message : String(error);
+        if (args.capability === "image" && collectedImages.length && isMissingPluginImageError(message)) {
+            return [...new Set(collectedImages)] as unknown as T;
+        }
         throw new Error(i18n.t("modelPlugin.executionFailed", { message }));
     }
 }
@@ -450,7 +673,7 @@ async function generateImage({
           },
         ],
         generationConfig: {
-          responseModalities: ["TEXT", "IMAGE"],
+          responseModalities: ["IMAGE", "TEXT"],
           imageConfig: {
             aspectRatio: aspectRatio,
             imageSize: imageSize,
@@ -458,11 +681,23 @@ async function generateImage({
         },
       },
     });
-    for (const candidate of data.candidates || []) {
+    const payload = data?.candidates ? data : data?.data || {};
+    for (const candidate of payload.candidates || []) {
       for (const part of candidate.content?.parts || []) {
         const img = part.inlineData || part.inline_data;
         if (img && img.data) {
           urls.push(\`data:\${img.mimeType || img.mime_type || "image/png"};base64,\${img.data}\`);
+          continue;
+        }
+        const file = part.fileData || part.file_data;
+        const fileUrl = file && (file.fileUri || file.file_uri);
+        if (fileUrl) {
+          urls.push(fileUrl);
+          continue;
+        }
+        const imageUrl = part.image_url?.url || part.imageUrl?.url || part.image_url || part.imageUrl;
+        if (imageUrl) {
+          urls.push(imageUrl);
         }
       }
     }
@@ -1022,19 +1257,7 @@ return await generateText({
 
 /** Normalize whatever an image script returns into the app's generated-image shape. */
 export function normalizePluginImages(result: unknown): string[] {
-    const items = Array.isArray(result) ? result : [result];
-    const urls = items
-        .map((item) => {
-            if (typeof item === "string") return item;
-            if (item && typeof item === "object") {
-                const record = item as Record<string, unknown>;
-                if (typeof record.dataUrl === "string") return record.dataUrl;
-                if (typeof record.url === "string") return record.url;
-                if (typeof record.b64_json === "string") return `data:image/png;base64,${record.b64_json}`;
-            }
-            return "";
-        })
-        .filter(Boolean);
+    const urls = readPluginImages(result);
     if (!urls.length) throw new Error(i18n.t("modelPlugin.noImages"));
     return urls;
 }

@@ -31,6 +31,8 @@ export type CanvasNodeImage = {
     errorDetails?: string;
     content: string;
     storageKey?: string;
+    previewUrl?: string;
+    previewStorageKey?: string;
     naturalWidth: number;
     naturalHeight: number;
     bytes: number;
@@ -72,15 +74,22 @@ export type CanvasNodeMetadata = {
     audioSpeed?: string;
     audioInstructions?: string;
     references?: string[];
+    referenceOrder?: string[];
+    referenceExcludedNodeIds?: string[];
     naturalWidth?: number;
     naturalHeight?: number;
     freeResize?: boolean;
     images?: CanvasNodeImage[];
     primaryImageId?: string;
     storageKey?: string;
+    previewUrl?: string;
+    previewStorageKey?: string;
     mimeType?: string;
     bytes?: number;
     durationMs?: number;
+    generationStartedAt?: number;
+    generationDurationMs?: number;
+    generationTimerHidden?: boolean;
     videoTaskId?: string;
     videoTaskProvider?: "openai" | "gemini";
     groupId?: string;
@@ -163,4 +172,9 @@ export type ContextMenuState =
           x: number;
           y: number;
           connectionId: string;
+      }
+    | {
+          type: "canvas";
+          x: number;
+          y: number;
       };

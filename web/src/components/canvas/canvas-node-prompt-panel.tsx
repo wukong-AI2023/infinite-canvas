@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Maximize2, Square } from "lucide-react";
 import { Button, Modal, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
@@ -9,8 +9,9 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
+import { CanvasPromptTemplates } from "./canvas-prompt-templates";
 import { CanvasAudioSettingsPopover, type CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
-import { CanvasPromptChipInput } from "./canvas-prompt-chip-input";
+import { CanvasPromptChipInput, type CanvasPromptChipInputHandle } from "./canvas-prompt-chip-input";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import { CanvasTextSettingsPopover } from "./canvas-text-settings-popover";
 import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData } from "@/types/canvas";
@@ -27,15 +28,14 @@ type CanvasNodePromptPanelProps = {
     onGenerate: (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => void;
     onStop: (nodeId: string) => void;
     mentionReferences?: CanvasResourceReference[];
-    nodes: CanvasNodeData[];
-    connectedNodes?: CanvasNodeData[];
-    onDisconnectReference?: (fromNodeId: string, toNodeId: string) => void;
+    onRemoveReference?: (nodeId: string) => void;
+    onReorderReferences?: (nodeIds: string[]) => void;
     onStartReferenceSelection?: (nodeId: string) => void;
     onImageSettingsOpenChange?: (open: boolean) => void;
     modeOverride?: CanvasNodeGenerationMode; // Plugin nodes set their generation type through useBuiltinPanel.mode.
 };
 
-export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, onConfigChange, onGenerate, onStop, mentionReferences = [], connectedNodes = [], onDisconnectReference, onStartReferenceSelection, onImageSettingsOpenChange, modeOverride }: CanvasNodePromptPanelProps) {
+export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfigChange, onGenerate, onStop, mentionReferences = [], onRemoveReference, onReorderReferences, onStartReferenceSelection, onImageSettingsOpenChange, modeOverride }: CanvasNodePromptPanelProps) {
     const { t } = useTranslation();
     const globalConfig = useEffectiveConfig();
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
@@ -49,6 +49,8 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
     const promptValue = node.metadata?.composerContent ?? node.metadata?.prompt ?? "";
     const [prompt, setPrompt] = useState(promptValue);
     const [expanded, setExpanded] = useState(false);
+    const editorRef = useRef<CanvasPromptChipInputHandle>(null);
+    const expandedEditorRef = useRef<CanvasPromptChipInputHandle>(null);
 
     useEffect(() => {
         setPrompt(promptValue);
@@ -83,10 +85,11 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
                 <Button type="text" className="!absolute right-3 top-3 z-10 !h-8 !w-8 !min-w-8 shrink-0 !rounded-full !bg-transparent !p-0" style={{ color: theme.node.text }} icon={<Maximize2 className="size-3.5" />} onClick={openExpandedEditor} aria-label={t("canvas.promptPanel.expandEditor")} />
             </Tooltip>
             <div className="shrink-0">
-                <CanvasNodeReferenceBar nodeId={node.id} nodes={nodes} connectedNodes={connectedNodes} onDisconnect={onDisconnectReference} onStartSelection={onStartReferenceSelection} />
+                <CanvasNodeReferenceBar nodeId={node.id} references={mentionReferences} onInsert={(reference) => editorRef.current?.insertReference(reference)} onRemove={onRemoveReference} onReorder={onReorderReferences} onStartSelection={onStartReferenceSelection} />
             </div>
             <div className="min-h-0 flex-1">
                 <CanvasPromptChipInput
+                    ref={editorRef}
                     value={prompt}
                     references={mentionReferences}
                     onChange={updatePrompt}
@@ -129,6 +132,7 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
                     )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                    <CanvasPromptTemplates onSelect={updatePrompt} />
                     <CanvasPromptLibrary onSelect={updatePrompt} />
                     <Button
                         type="primary"
@@ -149,8 +153,9 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
             </div>
             <Modal title={t("canvas.promptPanel.editorTitle")} open={expanded} centered width={760} footer={null} onCancel={() => setExpanded(false)} destroyOnHidden>
                 <div data-canvas-no-zoom className="pt-2" onWheelCapture={(event) => event.stopPropagation()}>
-                    <CanvasNodeReferenceBar nodeId={node.id} nodes={nodes} connectedNodes={connectedNodes} onDisconnect={onDisconnectReference} onStartSelection={(nodeId) => { setExpanded(false); onStartReferenceSelection?.(nodeId); }} />
+                    <CanvasNodeReferenceBar nodeId={node.id} references={mentionReferences} onInsert={(reference) => expandedEditorRef.current?.insertReference(reference)} onRemove={onRemoveReference} onReorder={onReorderReferences} onStartSelection={(nodeId) => { setExpanded(false); onStartReferenceSelection?.(nodeId); }} />
                     <CanvasPromptChipInput
+                        ref={expandedEditorRef}
                         value={prompt}
                         references={mentionReferences}
                         onChange={updatePrompt}

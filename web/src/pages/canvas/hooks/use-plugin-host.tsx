@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, type Dispatch, type MutableRefObject, 
 import { useTranslation } from "react-i18next";
 
 import { requestEdit, requestGeneration, requestImageQuestion, type AiTextMessage } from "@/services/api/image";
-import { imageToDataUrl } from "@/services/image-storage";
+import { generatedImageToDataUrl } from "@/services/image-storage";
 import { requestVideoGeneration, storeGeneratedVideo } from "@/services/api/video";
 import { decodeChannelModel, selectableModelsByCapability, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
 import { buildGenerationConfig } from "@/lib/canvas/canvas-generation-helpers";
@@ -36,7 +36,7 @@ type PluginHostParams = {
  */
 export function usePluginHost(params: PluginHostParams) {
     const { t } = useTranslation();
-    const { effectiveConfig, isAiConfigReady, openConfigDialog, theme, nodesRef, connectionsRef, viewportRef, setNodes, setDialogNodeId, applyAgentOps } = params;
+    const { effectiveConfig, isAiConfigReady, openConfigDialog, theme, nodesRef, connectionsRef, setNodes, setDialogNodeId, applyAgentOps } = params;
 
     // Host capabilities available to plugin nodes; methods receive nodeId and are not bound to a specific node.
     const pluginAi = useMemo<CanvasPluginAi>(() => {
@@ -55,14 +55,7 @@ export function usePluginHost(params: PluginHostParams) {
                 ensureReady(config);
                 const references = toReferences(options?.references);
                 const items = references.length ? await requestEdit(config, prompt, references, { signal: options?.signal }) : await requestGeneration(config, prompt, { signal: options?.signal });
-                const images = await Promise.all(items.map(async (item) => {
-                    try {
-                        return await imageToDataUrl({ dataUrl: item.dataUrl }, { signal: options?.signal });
-                    } catch (error) {
-                        if (options?.signal?.aborted) throw error;
-                        return item.dataUrl;
-                    }
-                }));
+                const images = await Promise.all(items.map((item) => generatedImageToDataUrl({ dataUrl: item.dataUrl }, { signal: options?.signal })));
                 return { images };
             },
             generateVideo: async (prompt, options) => {
@@ -118,7 +111,7 @@ export function usePluginHost(params: PluginHostParams) {
         (panelNode: CanvasNodeData) => {
             const Panel = getNodeDefinition(panelNode.type)?.Panel;
             if (!Panel) return null;
-            const ctx = buildNodeContext(pluginHost, panelNode, theme, viewportRef.current.k);
+            const ctx = buildNodeContext(pluginHost, panelNode, theme, 1);
             return <Panel ctx={ctx} onClose={() => setDialogNodeId(null)} />;
         },
         [pluginHost, theme],
@@ -128,7 +121,7 @@ export function usePluginHost(params: PluginHostParams) {
     const buildNodeToolbarItems = useCallback(
         (node: CanvasNodeData): CanvasNodeToolbarItem[] => {
             const definition = getNodeDefinition(node.type);
-            const ctx = buildNodeContext(pluginHost, node, theme, viewportRef.current.k);
+            const ctx = buildNodeContext(pluginHost, node, theme, 1);
             const custom = definition?.toolbar?.(ctx) || [];
             // Show the interaction/move toggle only for nodes with content that are not forced into an interactive state.
             if (!definition?.interactionToggle || !node.metadata?.content || definition.forceInteractive?.(node)) return custom;

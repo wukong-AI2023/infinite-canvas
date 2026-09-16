@@ -77,7 +77,7 @@ export function ConnectionCreateOption({ theme, icon, title, description, onClic
     );
 }
 
-export function NodeCreateMenu({ position, scale, onCreate, onUpload, onClose, onMouseEnter, onMouseLeave }: { position: Position; scale: number; onCreate: (type: string) => void; onUpload?: () => void; onClose: () => void; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
+export function NodeCreateMenu({ position, scale, centeredInViewport = false, onCreate, onUpload, onClose, onMouseEnter, onMouseLeave }: { position: Position; scale: number; centeredInViewport?: boolean; onCreate: (type: string) => void; onUpload?: () => void; onClose: () => void; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const { t } = useTranslation();
     useNodeRegistryVersion();
@@ -91,12 +91,12 @@ export function NodeCreateMenu({ position, scale, onCreate, onUpload, onClose, o
         document.addEventListener("pointerdown", handlePointerDown, true);
         return () => document.removeEventListener("pointerdown", handlePointerDown, true);
     }, [onClose]);
-    return (
+    const menu = (
         <div
             ref={menuRef}
             className="pointer-events-auto absolute z-[120] max-h-[70vh] w-[253.333333px] overflow-y-auto rounded-[16px] border p-3 shadow-2xl backdrop-blur thin-scrollbar"
             data-canvas-no-zoom
-            style={{ left: position.x, top: position.y, transform: `scale(${0.9 / Math.max(scale, 0.25)})`, transformOrigin: "top left", background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+            style={{ left: position.x, top: centeredInViewport ? "50%" : position.y, transform: centeredInViewport ? `translateY(-50%) scale(${0.9 / Math.max(scale, 0.25)})` : `scale(${0.9 / Math.max(scale, 0.25)})`, transformOrigin: centeredInViewport ? "left center" : "top left", background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
             onPointerDown={(event) => event.stopPropagation()}
@@ -117,4 +117,5 @@ export function NodeCreateMenu({ position, scale, onCreate, onUpload, onClose, o
             </div>
         </div>
     );
+    return menu;
 }

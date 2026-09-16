@@ -44,14 +44,51 @@ export async function axiosDirectThenProxy<T = unknown>(config: AxiosRequestConf
 }
 
 export async function fetchMediaBlob(url: string, init?: RequestInit): Promise<Blob> {
-    return requestMedia(url, async (next) => {
-        const response = await fetch(next, { ...init, referrerPolicy: "no-referrer" });
-        const blob = await response.blob();
-        if (!response.ok || isBlockedMediaBlob(blob, response.headers.get("content-type"))) {
-            throw mediaResponseError(response.status);
+    return requestMedia(url, (next) => fetchMediaBlobFrom(next, init));
+}
+
+export async function fetchMediaBlobDirectThenProxy(url: string, init: RequestInit | undefined, directTimeoutMs: number, proxyTimeoutMs: number): Promise<Blob> {
+    if (!/^https?:\/\//i.test(url)) return fetchMediaBlobFrom(url, init);
+    const proxied = withLocalProxy(url);
+    try {
+        return await fetchMediaBlobWithTimeout(url, init, directTimeoutMs);
+    } catch (error) {
+        if (init?.signal?.aborted || proxied === url) throw error;
+        return fetchMediaBlobWithTimeout(proxied, init, proxyTimeoutMs);
+    }
+}
+
+async function fetchMediaBlobWithTimeout(url: string, init: RequestInit | undefined, timeoutMs: number) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const abort = () => controller.abort(init?.signal?.reason);
+    if (init?.signal?.aborted) abort();
+    else init?.signal?.addEventListener("abort", abort, { once: true });
+    const timer = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+    }, timeoutMs);
+    try {
+        return await fetchMediaBlobFrom(url, { ...init, signal: controller.signal });
+    } catch (error) {
+        if (init?.signal?.aborted) throw init.signal.reason instanceof Error ? init.signal.reason : new DOMException("Aborted", "AbortError");
+        if (timedOut) {
+            const timeoutError = new Error(i18n.t("common.mediaDownloadFailed"));
+            timeoutError.name = "TimeoutError";
+            throw timeoutError;
         }
-        return blob;
-    });
+        throw error;
+    } finally {
+        window.clearTimeout(timer);
+        init?.signal?.removeEventListener("abort", abort);
+    }
+}
+
+async function fetchMediaBlobFrom(url: string, init?: RequestInit) {
+    const response = await fetch(url, { ...init, referrerPolicy: "no-referrer" });
+    const blob = await response.blob();
+    if (!response.ok || isBlockedMediaBlob(blob, response.headers.get("content-type"))) throw mediaResponseError(response.status);
+    return blob;
 }
 
 export function isBlockedMediaType(contentType?: string | null) {

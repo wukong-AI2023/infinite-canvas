@@ -2,7 +2,7 @@ import localforage from "localforage";
 
 import { nanoid } from "nanoid";
 import i18n from "@/i18n";
-import { fetchMediaBlob, MEDIA_RESPONSE_ERROR } from "@/services/api/local-proxy";
+import { fetchMediaBlob, fetchMediaBlobDirectThenProxy, MEDIA_RESPONSE_ERROR } from "@/services/api/local-proxy";
 
 export type UploadedImage = {
     url: string;
@@ -20,42 +20,27 @@ const objectUrls = new Map<string, string>();
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
 const IMAGE_REMOTE_LOAD_TIMEOUT_MS = 10 * 60_000;
 const IMAGE_DECODE_TIMEOUT_MS = 10_000;
+const GENERATED_IMAGE_DIRECT_TIMEOUT_MS = 8_000;
+const GENERATED_IMAGE_PROXY_TIMEOUT_MS = 90_000;
+const MODEL_REFERENCE_MAX_EDGE = 1536;
+const MODEL_REFERENCE_JPEG_QUALITY = 0.88;
 const IMAGE_TIMEOUT_ERROR = "ImageTimeoutError";
+const GENERATED_IMAGE_DOWNLOAD_ERROR = "GeneratedImageDownloadError";
 
-type ImageReadOptions = { signal?: AbortSignal };
+type ImageReadOptions = { signal?: AbortSignal; generatedResult?: boolean };
 
 export const IMAGE_THUMBNAIL_MAX_EDGE = 360;
+export const CANVAS_IMAGE_PREVIEW_MAX_EDGE = 768;
+const CANVAS_IMAGE_PREVIEW_JPEG_QUALITY = 0.85;
 
 export async function createImageThumbnail(source: { url?: string; storageKey?: string }): Promise<UploadedImage | null> {
-    const stored = source.storageKey ? await getImageBlob(source.storageKey) : null;
-    const blob = stored || (source.url ? await fetchImageBlob(source.url) : null);
-    if (!blob) return null;
-    const bitmap = await loadBitmap(blob);
-    if (!bitmap) return null;
-    const sourceWidth = "naturalWidth" in bitmap && bitmap.naturalWidth ? bitmap.naturalWidth : bitmap.width;
-    const sourceHeight = "naturalHeight" in bitmap && bitmap.naturalHeight ? bitmap.naturalHeight : bitmap.height;
-    const maxEdge = Math.max(sourceWidth, sourceHeight);
-    if (maxEdge <= IMAGE_THUMBNAIL_MAX_EDGE) {
-        closeBitmap(bitmap);
-        return null;
-    }
-    const scale = IMAGE_THUMBNAIL_MAX_EDGE / maxEdge;
-    const width = Math.max(1, Math.round(sourceWidth * scale));
-    const height = Math.max(1, Math.round(sourceHeight * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d");
-    if (!context) {
-        closeBitmap(bitmap);
-        return null;
-    }
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-    context.drawImage(bitmap, 0, 0, width, height);
-    closeBitmap(bitmap);
-    const thumb = await canvasToJpeg(canvas, 0.8);
-    return thumb ? storeImage(thumb) : null;
+    const resized = await createResizedImageBlob(source, { maxEdge: IMAGE_THUMBNAIL_MAX_EDGE, jpegQuality: 0.8, skipIfWithinMax: true });
+    return resized ? storeImage(resized.blob) : null;
+}
+
+export async function createCanvasImagePreview(source: { url?: string; storageKey?: string }): Promise<UploadedImage | null> {
+    const resized = await createResizedImageBlob(source, { maxEdge: CANVAS_IMAGE_PREVIEW_MAX_EDGE, jpegQuality: CANVAS_IMAGE_PREVIEW_JPEG_QUALITY, detectTransparency: true, skipIfWithinMax: true });
+    return resized ? storeImage(resized.blob) : null;
 }
 
 function loadBitmap(blob: Blob) {
@@ -85,8 +70,56 @@ function closeBitmap(image: ImageBitmap | HTMLImageElement) {
     if ("close" in image) image.close();
 }
 
-function canvasToJpeg(canvas: HTMLCanvasElement, quality: number) {
-    return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number) {
+    return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
+}
+
+async function createResizedImageBlob(source: { url?: string; storageKey?: string }, options: { maxEdge: number; jpegQuality: number; detectTransparency?: boolean; skipIfWithinMax?: boolean; signal?: AbortSignal }) {
+    throwIfAborted(options.signal);
+    const stored = source.storageKey ? await getImageBlob(source.storageKey) : null;
+    const blob = stored || (source.url ? await fetchImageBlob(source.url) : null);
+    if (!blob) return null;
+    const bitmap = await loadBitmap(blob);
+    if (!bitmap) return null;
+    try {
+        return await rasterizeBitmap(bitmap, options);
+    } finally {
+        closeBitmap(bitmap);
+    }
+}
+
+async function rasterizeBitmap(bitmap: ImageBitmap | HTMLImageElement, options: { maxEdge: number; jpegQuality: number; detectTransparency?: boolean; skipIfWithinMax?: boolean; signal?: AbortSignal }) {
+    const sourceWidth = "naturalWidth" in bitmap && bitmap.naturalWidth ? bitmap.naturalWidth : bitmap.width;
+    const sourceHeight = "naturalHeight" in bitmap && bitmap.naturalHeight ? bitmap.naturalHeight : bitmap.height;
+    const maxEdge = Math.max(sourceWidth, sourceHeight);
+    if (options.skipIfWithinMax && maxEdge <= options.maxEdge) return null;
+    const scale = Math.min(1, options.maxEdge / Math.max(maxEdge, 1));
+    const width = Math.max(1, Math.round(sourceWidth * scale));
+    const height = Math.max(1, Math.round(sourceHeight * scale));
+    throwIfAborted(options.signal);
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", options.detectTransparency ? { willReadFrequently: true } : undefined);
+    if (!context) return null;
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(bitmap, 0, 0, width, height);
+    throwIfAborted(options.signal);
+    let hasTransparency = false;
+    if (options.detectTransparency) {
+        const pixels = context.getImageData(0, 0, width, height).data;
+        for (let index = 3; index < pixels.length; index += 4) {
+            if (pixels[index] < 255) {
+                hasTransparency = true;
+                break;
+            }
+        }
+    }
+    const mimeType = hasTransparency ? "image/png" : "image/jpeg";
+    const blob = await canvasToBlob(canvas, mimeType, hasTransparency ? undefined : options.jpegQuality);
+    throwIfAborted(options.signal);
+    return blob ? { blob, width, height, mimeType } : null;
 }
 
 export async function uploadImage(input: string | Blob, options?: ImageReadOptions): Promise<UploadedImage> {
@@ -96,12 +129,16 @@ export async function uploadImage(input: string | Blob, options?: ImageReadOptio
     try {
         blob = await fetchImageBlob(input, options);
     } catch (error) {
-        if (options?.signal?.aborted || isNamedError(error, MEDIA_RESPONSE_ERROR) || isNamedError(error, IMAGE_TIMEOUT_ERROR) || !/^https?:\/\//i.test(input)) throw error;
+        if (options?.signal?.aborted || options?.generatedResult || isNamedError(error, MEDIA_RESPONSE_ERROR) || isNamedError(error, IMAGE_TIMEOUT_ERROR) || !/^https?:\/\//i.test(input)) throw error;
         const meta = await loadImageMeta(input, options, IMAGE_REMOTE_LOAD_TIMEOUT_MS);
         if (!meta) throw error;
         return { url: input, width: meta.width, height: meta.height, bytes: 0, mimeType: "" };
     }
     return storeImage(blob, options);
+}
+
+export function uploadGeneratedImage(input: string | Blob, options?: ImageReadOptions) {
+    return uploadImage(input, { ...options, generatedResult: true });
 }
 
 async function storeImage(blob: Blob, options?: ImageReadOptions): Promise<UploadedImage> {
@@ -123,6 +160,14 @@ async function storeImage(blob: Blob, options?: ImageReadOptions): Promise<Uploa
 }
 
 async function fetchImageBlob(url: string, options?: ImageReadOptions) {
+    if (options?.generatedResult && /^https?:\/\//i.test(url)) {
+        try {
+            return await fetchMediaBlobDirectThenProxy(url, { signal: options.signal }, GENERATED_IMAGE_DIRECT_TIMEOUT_MS, GENERATED_IMAGE_PROXY_TIMEOUT_MS);
+        } catch (error) {
+            if (options.signal?.aborted) throw abortReason(options.signal);
+            throw namedError(GENERATED_IMAGE_DOWNLOAD_ERROR, i18n.t("common.generatedImageDownloadFailed"));
+        }
+    }
     const controller = new AbortController();
     let timedOut = false;
     const abort = () => controller.abort();
@@ -174,8 +219,8 @@ function loadImageMeta(url: string, options?: ImageReadOptions, timeoutMs = IMAG
     });
 }
 
-function namedError(name: string) {
-    const error = new Error(i18n.t("common.imageReadFailed"));
+function namedError(name: string, message = i18n.t("common.imageReadFailed")) {
+    const error = new Error(message);
     error.name = name;
     return error;
 }
@@ -215,9 +260,31 @@ export async function setImageBlob(storageKey: string, blob: Blob) {
 }
 
 export async function imageToDataUrl(image: { url?: string; dataUrl?: string; storageKey?: string }, options?: ImageReadOptions) {
-    const url = image.dataUrl || (await resolveImageUrl(image.storageKey, image.url || ""));
+    const stored = image.storageKey ? await getImageBlob(image.storageKey) : null;
+    if (stored) return blobToDataUrl(stored);
+    const url = image.dataUrl || image.url || "";
     if (!url || url.startsWith("data:")) return url;
     return blobToDataUrl(await fetchImageBlob(url, options));
+}
+
+export function generatedImageToDataUrl(image: { url?: string; dataUrl?: string; storageKey?: string }, options?: ImageReadOptions) {
+    return imageToDataUrl(image, { ...options, generatedResult: true });
+}
+
+export async function prepareReferenceImageDataUrl(image: { url?: string; dataUrl?: string; storageKey?: string }, options?: ImageReadOptions) {
+    throwIfAborted(options?.signal);
+    const source = await imageToDataUrl(image, options);
+    if (!source) throw new Error(i18n.t("common.imageReadFailed"));
+    const blob = await (await fetch(source, { signal: options?.signal })).blob();
+    const bitmap = await loadBitmap(blob);
+    if (!bitmap) throw new Error(i18n.t("common.imageReadFailed"));
+    try {
+        const output = await rasterizeBitmap(bitmap, { maxEdge: MODEL_REFERENCE_MAX_EDGE, jpegQuality: MODEL_REFERENCE_JPEG_QUALITY, detectTransparency: true, signal: options?.signal });
+        if (!output) throw new Error(i18n.t("common.imageReadFailed"));
+        return blobToDataUrl(output.blob);
+    } finally {
+        closeBitmap(bitmap);
+    }
 }
 
 export async function deleteStoredImages(keys: Iterable<string>) {
@@ -252,6 +319,7 @@ export function collectImageStorageKeys(value: unknown, keys = new Set<string>()
     if (!value || typeof value !== "object") return keys;
     if ("storageKey" in value && typeof value.storageKey === "string" && value.storageKey.startsWith("image:")) keys.add(value.storageKey);
     if ("coverStorageKey" in value && typeof value.coverStorageKey === "string" && value.coverStorageKey.startsWith("image:")) keys.add(value.coverStorageKey);
+    if ("previewStorageKey" in value && typeof value.previewStorageKey === "string" && value.previewStorageKey.startsWith("image:")) keys.add(value.previewStorageKey);
     Object.values(value).forEach((item) => (Array.isArray(item) ? item.forEach((child) => collectImageStorageKeys(child, keys)) : collectImageStorageKeys(item, keys)));
     return keys;
 }

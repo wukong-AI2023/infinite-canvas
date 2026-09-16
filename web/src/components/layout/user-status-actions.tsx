@@ -1,9 +1,8 @@
 import type { CSSProperties } from "react";
 import { Tooltip } from "antd";
-import { BookOpen, Keyboard, Puzzle, Settings2 } from "lucide-react";
+import { BookOpen, Keyboard, Moon, Puzzle, Settings2, Sun } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { GitHubLink } from "@/components/layout/github-link";
 import { VersionReleaseModal } from "@/components/layout/version-release-modal";
 import { DOCS_URL } from "@/constant/env";
@@ -64,7 +63,15 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
                 </button>
             </Tooltip>
             <Tooltip title={t(dark ? "topNav.lightTheme" : "topNav.darkTheme")} placement="bottom" mouseEnterDelay={0.2}>
-                <AnimatedThemeToggler theme={theme} targetTheme={dark ? "light" : lastDarkTheme} onThemeChange={setTheme} className={naturalIconClass} style={iconStyle} aria-label={t(dark ? "topNav.lightTheme" : "topNav.darkTheme")} />
+                <button
+                    type="button"
+                    className={naturalIconClass}
+                    style={iconStyle}
+                    onClick={() => setTheme(dark ? "light" : lastDarkTheme)}
+                    aria-label={t(dark ? "topNav.lightTheme" : "topNav.darkTheme")}
+                >
+                    {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
+                </button>
             </Tooltip>
             <VersionReleaseModal style={versionStyle} />
             <GitHubLink className={cn("bg-transparent hover:bg-transparent dark:hover:bg-transparent", gitHubClassName)} style={gitHubStyle} />
