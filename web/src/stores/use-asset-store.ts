@@ -17,6 +17,7 @@ type AssetBase<T extends AssetKind> = {
     kind: T;
     title: string;
     coverUrl: string;
+    coverStorageKey?: string;
     tags: string[];
     source?: string;
     note?: string;
