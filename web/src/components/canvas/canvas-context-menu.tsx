@@ -5,12 +5,13 @@ import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
-import type { ContextMenuState } from "@/types/canvas";
+import { CanvasNodeType, type ContextMenuState } from "@/types/canvas";
 import type { VideoFramePosition } from "@/lib/canvas/canvas-video-frame";
 
 export function CanvasNodeContextMenu({
     menu,
     canCaptureVideoFrame,
+    nodeType,
     canGroup,
     canUngroup,
     canUndo,
@@ -29,6 +30,7 @@ export function CanvasNodeContextMenu({
 }: {
     menu: ContextMenuState;
     canCaptureVideoFrame: boolean;
+    nodeType?: CanvasNodeType | string;
     canGroup?: boolean;
     canUngroup?: boolean;
     canUndo?: boolean;
@@ -84,7 +86,7 @@ export function CanvasNodeContextMenu({
             ) : null}
             {menu.type === "node" && canGroup ? <MenuButton icon={<Group className="size-4" />} label={t("canvas.nodeToolbar.group")} onClick={onGroup} /> : null}
             {menu.type === "node" && canUngroup ? <MenuButton icon={<Ungroup className="size-4" />} label={t("canvas.nodeToolbar.ungroup")} onClick={onUngroup} /> : null}
-            {menu.type === "node" ? <MenuButton icon={<ClipboardCopy className="size-4" />} label={t("canvas.node.copyImage")} onClick={onCopy} /> : null}
+            {menu.type === "node" ? <MenuButton icon={<ClipboardCopy className="size-4" />} label={t(nodeType === CanvasNodeType.Video ? "canvas.node.copyVideo" : "canvas.node.copyImage")} onClick={onCopy} /> : null}
             {menu.type === "node" ? <MenuButton icon={<Copy className="size-4" />} label={t("canvas.node.createCopy")} onClick={onDuplicate} /> : null}
             {menu.type !== "canvas" ? <MenuButton icon={<Trash2 className="size-4" />} label={t("canvas.controls.delete")} onClick={onDelete} danger /> : null}
         </div>

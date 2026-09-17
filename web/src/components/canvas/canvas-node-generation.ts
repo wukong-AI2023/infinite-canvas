@@ -3,7 +3,7 @@ import i18n from "@/i18n";
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
-import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
+import { CanvasNodeType, type CanvasAttachedReference, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
 import { CANVAS_REFERENCE_PATTERN, getGenerationResourceNodes } from "@/lib/canvas/canvas-resource-references";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 
@@ -37,11 +37,11 @@ type NodeGenerationGroupInput = {
 
 export type NodeGenerationInput = NodeGenerationResourceInput | NodeGenerationGroupInput;
 
-export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], prompt: string): NodeGenerationContext {
-    const resourceInputs = flattenGenerationInputs(buildNodeGenerationInputs(nodeId, nodes, connections));
+export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], prompt: string, options?: { includeAttached?: boolean }): NodeGenerationContext {
+    const resourceInputs = flattenGenerationInputs(buildNodeGenerationInputs(nodeId, nodes, connections, options?.includeAttached !== false));
     const counts = { image: 0, video: 0, audio: 0, text: 0 };
     const labelByNodeId = new Map(resourceInputs.map((input) => [input.nodeId, generationLabel(input.type, counts[input.type]++)]));
-    const referencedPrompt = prompt.replace(CANVAS_REFERENCE_PATTERN, (_, referenceNodeId: string) => {
+    const referencedPrompt = prompt.replace(CANVAS_REFERENCE_PATTERN, (_match, _kind: string, referenceNodeId: string) => {
         const input = resourceInputs.find((item) => item.nodeId === referenceNodeId);
         const label = labelByNodeId.get(referenceNodeId);
         return input && label ? (input.type === "text" ? `【${label}】` : label) : "";
@@ -62,8 +62,34 @@ export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData
     };
 }
 
-export function buildNodeGenerationInputs(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): NodeGenerationInput[] {
-    return getGenerationResourceNodes(nodeId, nodes, connections).flatMap(readNodeGenerationResource);
+export function buildNodeGenerationInputs(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], includeAttached = true): NodeGenerationInput[] {
+    const connected = getGenerationResourceNodes(nodeId, nodes, connections).flatMap(readNodeGenerationResource);
+    if (!includeAttached) return connected;
+    const target = nodes.find((node) => node.id === nodeId);
+    const attached = (target?.metadata?.attachedReferences || []).flatMap(readAttachedGenerationResource);
+    const byId = new Map([...connected, ...attached].map((input) => [input.nodeId, input]));
+    const ordered: NodeGenerationInput[] = [];
+    const seen = new Set<string>();
+    (target?.metadata?.referenceOrder || []).forEach((id) => {
+        const input = byId.get(id);
+        if (!input || seen.has(id)) return;
+        ordered.push(input);
+        seen.add(id);
+    });
+    [...connected, ...attached].forEach((input) => {
+        if (seen.has(input.nodeId)) return;
+        ordered.push(input);
+        seen.add(input.nodeId);
+    });
+    return ordered;
+}
+
+function readAttachedGenerationResource(item: CanvasAttachedReference): NodeGenerationResourceInput[] {
+    if (!item?.storageKey) return [];
+    if (item.kind === "image") {
+        return [{ nodeId: item.id, type: "image", title: item.title, image: { id: item.id, name: `${item.title || item.id}.png`, type: "image/png", storageKey: item.storageKey, width: item.width, height: item.height } }];
+    }
+    return [];
 }
 function flattenGenerationInputs(inputs: NodeGenerationInput[]) {
     const resources = inputs.flatMap((input) => (input.type === "group" ? input.children : [input]));
@@ -78,7 +104,7 @@ function readNodeGenerationResource(node: CanvasNodeData): NodeGenerationResourc
     const audio = readReferenceAudio(node);
     if (audio) return [{ nodeId: node.id, type: "audio", title: node.title, audio }];
     const resource = getNodeDefinition(node.type)?.resource?.(node);
-    if (resource?.kind === "image" && resource.url) return [{ nodeId: node.id, type: "image", title: node.title, image: { id: node.id, name: `${node.title || node.id}.png`, type: node.metadata?.mimeType || "image/png", dataUrl: resource.url, storageKey: node.metadata?.storageKey } }];
+    if (resource?.kind === "image" && resource.url) return [{ nodeId: node.id, type: "image", title: node.title, image: { id: node.id, name: `${node.title || node.id}.png`, type: node.metadata?.mimeType || "image/png", dataUrl: resource.url, storageKey: node.metadata?.storageKey, width: node.metadata?.naturalWidth, height: node.metadata?.naturalHeight } }];
     if (resource?.kind === "video" && resource.url) return [{ nodeId: node.id, type: "video", title: node.title, video: { id: node.id, name: `${node.title || node.id}.mp4`, type: node.metadata?.mimeType || "video/mp4", url: resource.url, storageKey: node.metadata?.storageKey } }];
     if (resource?.kind === "audio" && resource.url) return [{ nodeId: node.id, type: "audio", title: node.title, audio: { id: node.id, name: `${node.title || node.id}.mp3`, type: node.metadata?.mimeType || "audio/mpeg", url: resource.url, storageKey: node.metadata?.storageKey } }];
     if (resource?.kind === "text" && resource.text) return [{ nodeId: node.id, type: "text", title: node.title, text: resource.text }];
@@ -101,7 +127,18 @@ export function buildNodeResponseMessages(context: NodeGenerationContext): AiTex
 
 export async function hydrateNodeGenerationContext(context: NodeGenerationContext) {
     const { imageToDataUrl } = await import("@/services/image-storage");
-    return { ...context, referenceImages: await Promise.all(context.referenceImages.map(async (image) => ({ ...image, dataUrl: await imageToDataUrl(image) }))) };
+    const { readImageMeta } = await import("@/lib/image-utils");
+    return {
+        ...context,
+        referenceImages: await Promise.all(
+            context.referenceImages.map(async (image) => {
+                const dataUrl = await imageToDataUrl(image);
+                if (image.width && image.height) return { ...image, dataUrl };
+                const meta = await readImageMeta(dataUrl);
+                return { ...image, dataUrl, width: meta.width, height: meta.height };
+            }),
+        ),
+    };
 }
 
 function readNodeTextInput(node: CanvasNodeData) {
@@ -128,6 +165,8 @@ function readReferenceImage(node: CanvasNodeData): ReferenceImage | null {
         type: node.metadata.mimeType || "image/png",
         dataUrl: node.metadata.content,
         storageKey: node.metadata.storageKey,
+        width: node.metadata.naturalWidth,
+        height: node.metadata.naturalHeight,
     };
 }
 

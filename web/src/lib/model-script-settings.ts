@@ -26,6 +26,33 @@ export type ImageScriptPanelRows = {
 const SETTINGS_BLOCK = /\/\*\s*canvas-settings\s*([\s\S]*?)\*\//;
 const HIDE_FIELDS = new Set<ModelScriptHideField>(["quality", "size", "background"]);
 
+export const DEFAULT_VIDEO_RESOLUTION_OPTIONS: ModelScriptResolutionOption[] = [
+    { value: "480", label: "480p" },
+    { value: "720", label: "720p" },
+    { value: "1080", label: "1080p" },
+];
+
+export function pickMiddleOption<T>(options: T[]) {
+    return options[Math.floor((options.length - 1) / 2)];
+}
+
+export function videoResolutionChoices(settings?: ModelScriptSettings) {
+    return settings?.resolution?.length ? settings.resolution : DEFAULT_VIDEO_RESOLUTION_OPTIONS;
+}
+
+export function resolveVideoQualityValue(value: string | undefined, settings?: ModelScriptSettings) {
+    const options = videoResolutionChoices(settings);
+    return matchScriptResolution(options, value || "")?.value || pickMiddleOption(options).value;
+}
+
+export function coerceVideoQualityForModel(config: AiConfig, model: string, value?: string) {
+    return resolveVideoQualityValue(value, parseModelScriptSettings(resolveModelScript(config, model)));
+}
+
+export function defaultVideoQualityForModel(config: AiConfig, model: string) {
+    return coerceVideoQualityForModel(config, model, "");
+}
+
 /** Read UI settings from a script comment. The script itself is never executed. */
 export function parseModelScriptSettings(script: string | undefined): ModelScriptSettings | undefined {
     const match = String(script || "").match(SETTINGS_BLOCK);
@@ -101,7 +128,7 @@ export function matchScriptSize(options: ModelScriptResolutionOption[] | undefin
 
 export function scriptVideoResolution(value: string, settings?: ModelScriptSettings) {
     if (!settings?.resolution?.length) return undefined;
-    return matchScriptResolution(settings.resolution, value)?.value || String(value || "").trim();
+    return matchScriptResolution(settings.resolution, value)?.value || pickMiddleOption(settings.resolution).value;
 }
 
 export function scriptImageQuality(value: string, settings?: ModelScriptSettings) {

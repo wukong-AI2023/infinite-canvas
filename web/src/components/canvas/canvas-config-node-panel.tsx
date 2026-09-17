@@ -4,7 +4,8 @@ import { Button, Segmented } from "antd";
 import { useTranslation } from "react-i18next";
 
 import { ModelPicker } from "@/components/model-picker";
-import { defaultConfig, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { defaultConfig, resolveModelForCapability, resolveModelScript, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { parseModelScriptSettings, resolveVideoQualityValue } from "@/lib/model-script-settings";
 import { CONFIG_NODE_LAYOUT_SIZE } from "@/constant/canvas";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -112,7 +113,7 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
             </div>
 
             <div className="mb-2 grid min-w-0 cursor-default grid-cols-[minmax(0,1fr)_148px] items-center gap-2" onMouseDown={(event) => event.stopPropagation()}>
-                <ModelPicker className="canvas-compact-control h-10" config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability={mode} onMissingConfig={() => openConfigDialog(true)} fullWidth />
+                <ModelPicker className="canvas-compact-control h-10" config={config} value={config.model} onChange={(model) => onConfigChange(node.id, mode === "video" ? { model, vquality: resolveVideoQualityValue(node.metadata?.vquality || config.vquality, parseModelScriptSettings(resolveModelScript(globalConfig, model))) } : { model })} capability={mode} onMissingConfig={() => openConfigDialog(true)} fullWidth />
                 {mode === "video" ? (
                     <CanvasVideoSettingsPopover config={config} placement="topRight" buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2" onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value))} />
                 ) : mode === "image" ? (
@@ -170,7 +171,7 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         size: node.metadata?.size || globalConfig.size || defaultConfig.size,
         background: node.metadata?.background ?? globalConfig.background ?? defaultConfig.background,
         videoSeconds: node.metadata?.seconds || globalConfig.videoSeconds || defaultConfig.videoSeconds,
-        vquality: node.metadata?.vquality || globalConfig.vquality || defaultConfig.vquality,
+        vquality: resolveVideoQualityValue(node.metadata?.vquality || globalConfig.vquality, parseModelScriptSettings(resolveModelScript(globalConfig, resolveModelForCapability(globalConfig, node.metadata?.model, mode)))),
         videoGenerateAudio: node.metadata?.generateAudio || globalConfig.videoGenerateAudio || defaultConfig.videoGenerateAudio,
         videoWatermark: node.metadata?.watermark || globalConfig.videoWatermark || defaultConfig.videoWatermark,
         videoMode: node.metadata?.videoMode || globalConfig.videoMode || defaultConfig.videoMode,

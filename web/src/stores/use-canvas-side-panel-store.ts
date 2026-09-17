@@ -20,23 +20,30 @@ function initialOpen() {
     return localStorage.getItem(OPEN_KEY) !== "0";
 }
 
+export type CanvasSidePanelTab = "canvas" | "assets" | "prompts";
+
 type CanvasSidePanelStore = {
     width: number;
+    tab: CanvasSidePanelTab;
     panelOpen: boolean;
     panelMounted: boolean;
     panelClosing: boolean;
     setWidth: (width: number) => void;
+    setTab: (tab: CanvasSidePanelTab) => void;
     openPanel: () => void;
     closePanel: () => void;
     togglePanel: () => void;
+    openAssetsTab: () => void;
 };
 
 export const useCanvasSidePanelStore = create<CanvasSidePanelStore>((set, get) => ({
     width: initialWidth(),
+    tab: "canvas",
     panelOpen: initialOpen(),
     panelMounted: initialOpen(),
     panelClosing: false,
     setWidth: (width) => set({ width }),
+    setTab: (tab) => set({ tab }),
     openPanel: () => {
         if (typeof window !== "undefined") localStorage.setItem(OPEN_KEY, "1");
         set({ panelOpen: true, panelMounted: true, panelClosing: false });
@@ -50,4 +57,8 @@ export const useCanvasSidePanelStore = create<CanvasSidePanelStore>((set, get) =
         }, CANVAS_SIDE_PANEL_MOTION_MS);
     },
     togglePanel: () => (get().panelOpen ? get().closePanel() : get().openPanel()),
+    openAssetsTab: () => {
+        get().openPanel();
+        set({ tab: "assets" });
+    },
 }));

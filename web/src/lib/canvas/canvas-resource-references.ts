@@ -1,6 +1,7 @@
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import i18n from "@/i18n";
 import { canvasNodeDisplaySrc } from "@/lib/canvas/canvas-image-preview";
+import { previewUrlFor } from "@/services/image-storage";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { imageToDataUrl } from "@/services/image-storage";
@@ -16,14 +17,56 @@ export type CanvasResourceReference = {
     title: string;
     previewUrl?: string;
     storageKey?: string;
+    width?: number;
+    height?: number;
     text?: string;
     active: boolean;
+    source?: "node" | "attached";
 };
 
-export const CANVAS_REFERENCE_PATTERN = /@\[node:([^\]]+)\]/g;
+export const CANVAS_REFERENCE_PATTERN = /@\[(node|asset):([^\]]+)\]/g;
+
+export function referenceToken(reference: Pick<CanvasResourceReference, "nodeId" | "source">) {
+    return `@[${reference.source === "attached" ? "asset" : "node"}:${reference.nodeId}]`;
+}
 
 export function buildNodeMentionReferences(node: CanvasNodeData, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
-    return labelResourceNodes(getOrderedReferenceNodes(node.id, nodes, connections), true);
+    return mixMentionReferences(node, labelResourceNodes(getOrderedReferenceNodes(node.id, nodes, connections), true), attachedMentionReferences(node));
+}
+
+function attachedMentionReferences(node: CanvasNodeData): CanvasResourceReference[] {
+    return (node.metadata?.attachedReferences || []).map((item) => ({
+        id: item.id,
+        nodeId: item.id,
+        kind: item.kind,
+        label: item.title,
+        title: item.title,
+        storageKey: item.storageKey,
+        previewUrl: previewUrlFor(item.storageKey),
+        width: item.width,
+        height: item.height,
+        active: true,
+        source: "attached" as const,
+    }));
+}
+
+function mixMentionReferences(node: CanvasNodeData, connected: CanvasResourceReference[], attached: CanvasResourceReference[]) {
+    const byId = new Map([...connected, ...attached].map((item) => [item.nodeId, item]));
+    const seen = new Set<string>();
+    const ordered: CanvasResourceReference[] = [];
+    (node.metadata?.referenceOrder || []).forEach((id) => {
+        const item = byId.get(id);
+        if (!item || seen.has(id)) return;
+        ordered.push(item);
+        seen.add(id);
+    });
+    [...connected, ...attached].forEach((item) => {
+        if (seen.has(item.nodeId)) return;
+        ordered.push(item);
+        seen.add(item.nodeId);
+    });
+    const counts: Record<CanvasResourceKind, number> = { image: 0, video: 0, audio: 0, text: 0 };
+    return ordered.map((item) => ({ ...item, label: labelForKind(item.kind, counts[item.kind]++) }));
 }
 
 export function buildCanvasResourceReferences(nodes: CanvasNodeData[]) {

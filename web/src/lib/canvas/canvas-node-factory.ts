@@ -24,16 +24,25 @@ export function createCanvasNode(type: CanvasNodeTypeId, position: Position, met
     };
 }
 
-export function imageMetadata(image: UploadedImage): CanvasNodeMetadata {
-    return { content: image.url, storageKey: image.storageKey, status: "success", naturalWidth: image.width, naturalHeight: image.height, bytes: image.bytes, mimeType: image.mimeType, previewUrl: undefined, previewStorageKey: undefined };
+export function imageMetadata(image: UploadedImage, origin?: "upload"): CanvasNodeMetadata {
+    return { content: image.url, storageKey: image.storageKey, status: "success", naturalWidth: image.width, naturalHeight: image.height, bytes: image.bytes, mimeType: image.mimeType, previewUrl: undefined, previewStorageKey: undefined, ...(origin ? { origin } : {}) };
 }
 
-export function videoMetadata(video: UploadedFile): CanvasNodeMetadata {
-    return { content: video.url, storageKey: video.storageKey, status: "success", naturalWidth: video.width, naturalHeight: video.height, bytes: video.bytes, mimeType: video.mimeType || "video/mp4", durationMs: video.durationMs };
+export function videoMetadata(video: UploadedFile, origin?: "upload"): CanvasNodeMetadata {
+    return { content: video.url, storageKey: video.storageKey, status: "success", naturalWidth: video.width, naturalHeight: video.height, bytes: video.bytes, mimeType: video.mimeType || "video/mp4", durationMs: video.durationMs, ...(origin ? { origin } : {}) };
 }
 
-export function audioMetadata(audio: UploadedFile): CanvasNodeMetadata {
-    return { content: audio.url, storageKey: audio.storageKey, status: "success", bytes: audio.bytes, mimeType: audio.mimeType || "audio/mpeg", durationMs: audio.durationMs };
+export function audioMetadata(audio: UploadedFile, origin?: "upload"): CanvasNodeMetadata {
+    return { content: audio.url, storageKey: audio.storageKey, status: "success", bytes: audio.bytes, mimeType: audio.mimeType || "audio/mpeg", durationMs: audio.durationMs, ...(origin ? { origin } : {}) };
+}
+
+export function isUploadedMediaNode(node?: CanvasNodeData | null) {
+    if (!node) return false;
+    if (node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Video && node.type !== CanvasNodeType.Audio) return false;
+    if (!node.metadata?.content) return false;
+    if (node.metadata.origin === "upload") return true;
+    if (node.metadata.generationType || node.metadata.generationMode || node.metadata.generationStartedAt || node.metadata.videoTaskId || node.metadata.model) return false;
+    return true;
 }
 
 export function referenceUrl(image: ReferenceImage) {
@@ -54,6 +63,7 @@ export function buildImageGenerationMetadata(type: CanvasImageGenerationType, co
 
 export function buildAudioGenerationMetadata(config: AiConfig): CanvasNodeMetadata {
     return {
+        generationMode: "audio",
         model: config.model,
         audioVoice: config.audioVoice,
         audioFormat: config.audioFormat,

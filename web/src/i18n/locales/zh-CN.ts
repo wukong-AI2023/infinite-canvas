@@ -256,7 +256,7 @@ export default {
         docs: "文档",
         projects: "我的画布",
         deleteCurrent: "删除当前画布",
-        importAsset: "导入资产",
+        importAsset: "上传",
         exportCurrent: "导出当前画布",
         undo: "撤销",
         redo: "重做",
@@ -289,7 +289,7 @@ export default {
         },
         node: {
             node: "节点",
-            untitled: "未命名节点", renameHint: "双击修改节点名称", group: "组", nodeCount: "{{count}} 个节点", generating: "生成中", failed: "生成失败", retry: "重试", missingPlugin: "缺少插件", missingPluginDescription: "节点类型“{{type}}”的插件未安装或未启用", generateImage: "用文本生图", generate: "生图", editText: "双击开始编辑...", emptyImage: "空图片节点", emptyVideo: "空视频节点", emptyAudio: "空音频节点", audio: "音频", batchExpanded: "图片组已展开", batchCollapsed: "图片组已收起", textBatchExpanded: "备选文本已展开", textBatchCollapsed: "备选文本已收起", createCopy: "创建副本", copyImage: "复制图片", setPrimary: "设为主图", setPrimaryText: "设为主文本",
+            untitled: "未命名节点", renameHint: "双击修改节点名称", group: "组", nodeCount: "{{count}} 个节点", generating: "生成中", failed: "生成失败", retry: "重试", missingPlugin: "缺少插件", missingPluginDescription: "节点类型“{{type}}”的插件未安装或未启用", generateImage: "用文本生图", generate: "生图", editText: "双击开始编辑...", emptyImage: "空图片节点", emptyVideo: "空视频节点", emptyAudio: "空音频节点", audio: "音频", batchExpanded: "图片组已展开", batchCollapsed: "图片组已收起", textBatchExpanded: "备选文本已展开", textBatchCollapsed: "备选文本已收起", createCopy: "创建副本", copyImage: "复制图片", copyVideo: "复制视频", setPrimary: "设为主图", setPrimaryText: "设为主文本",
         },
         videoFrames: { first: "截取首帧", last: "截取尾帧", current: "截取当前帧", firstTitle: "{{name}} 首帧", lastTitle: "{{name}} 尾帧", currentTitle: "{{name}} 当前帧", captured: "已生成图片节点", failed: "无法截取该画面，请重试" },
         sidePanel: {
@@ -317,7 +317,7 @@ export default {
         plugins: { title: "节点插件", installedPlugin: "已安装插件 {{name}}", installed: "已安装 {{name}}", installFailed: "安装失败：{{error}}", enabled: "已启用", disabled: "已禁用", upgradeAvailable: "有新版本，点击升级", updateFromSource: "从来源更新", updated: "已更新", uninstallTitle: "卸载该插件？", uninstall: "卸载", newVersion: "有新版本可升级", officialDescription: "本项目官方插件，来自仓库注册表", refresh: "刷新", loadFailed: "加载失败：{{error}}", loadingOfficial: "正在获取官方插件…", noOfficial: "暂无官方插件", install: "安装", urlPlaceholder: "输入插件 JS 文件 URL，例如 https://.../plugin.js", noThirdParty: "还没有安装第三方插件", official: "官方插件", local: "本地插件", thirdParty: "第三方插件", warning: "插件代码会在当前页面内直接执行，可访问本地数据（包含 AI API Key）。请仅安装你信任来源的插件。", aiConfigRequired: "AI 配置未就绪，请先在设置里配置模型与密钥", interactiveTitle: "当前：交互中。点击切回「移动」——拖动可移动节点", movableTitle: "当前：可移动。点击切到「交互」——可操作节点内容（如转动全景）", move: "移动", interact: "交互" },
         promptTemplates: { title: "模板库", manageTitle: "模板库", search: "搜索模板", newTemplate: "新模板", manage: "管理", apply: "应用", empty: "还没有模板", untitled: "未命名模板", untitledGroup: "未命名分组", name: "名称", scene: "适用场景", caption: "短标题", group: "分组", prompt: "提示词", negative: "负向提示词", params: "参数备注", groups: "分组管理", addGroup: "新分组", deleteTemplate: "删除该模板？", deleteGroup: "删除该分组？组内模板会移到「{{name}}」", lastGroup: "至少保留一个分组", noMatch: "无匹配模板" },
         promptPanel: { video: "描述要生成的视频内容", audio: "描述要生成的音频内容", image: "描述要生成的图片内容", text: "请输入你想要生成的文本内容", editImage: "请输入你想要把这张图修改成什么", editText: "请输入你想要将本段文本修改成什么", expandEditor: "放大编辑", editorTitle: "编辑提示词", stopGeneration: "停止生成", generate: "生成", stop: "停止" },
-        references: { title: "参考内容", select: "从画布选择参考节点", disconnect: "断开参考连接", remove: "从当前参考中移除", insert: "点击插入{{label}}，拖动调整顺序", empty: "暂无内容", selecting: "正在添加参考", choose: "选择", selectingHint: "从画布选择参考 · ESC 返回输入框" },
+        references: { title: "参考内容", select: "从画布选择参考节点", disconnect: "断开参考连接", remove: "从当前参考中移除", insert: "点击插入{{label}}，拖动调整顺序", empty: "暂无内容", selecting: "正在添加参考", choose: "选择", selectingHint: "从画布选择参考 · ESC 返回输入框", connected: "已连接节点", assets: "我的素材", firstFrame: "首帧", swapFrames: "对调首尾帧" },
         composer: { title: "组装提示词", description: "参考内容全部发送，点击或按 @ 可在提示词中明确指代", placeholder: "输入提示词，点击参考缩略图或按 @ 插入引用", imagePreview: "引用图片预览", resources: { image: "图片{{index}}", video: "视频{{index}}", audio: "音频{{index}}", text: "文本{{index}}", group: "组{{index}}" } },
         controls: { ratio: "比例", duplicate: "复制", upload: "上传", paste: "粘贴", delete: "删除", images: "{{count}} 张", texts: "{{count}} 条", generations: "{{count}} 次", reasoning: "推理" },
         generation: { interrupted: "页面刷新后生成已中断，请重新生成。", front: "正面视角", rotateRight: "向右旋转 {{angle}} 度", rotateLeft: "向左旋转 {{angle}} 度", level: "水平视角", topDown: "俯视 {{angle}} 度", lowAngle: "仰视 {{angle}} 度", angleLabel: "AI 多角度：{{horizontal}}，{{pitch}}，镜头距离 {{distance}}，{{lens}}镜头", anglePrompt: "基于参考图重新生成同一主体的新视角，保持主体、颜色、材质和画面风格一致，不要只做透视变形。{{angle}}。" },

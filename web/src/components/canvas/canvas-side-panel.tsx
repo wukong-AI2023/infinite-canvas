@@ -26,8 +26,6 @@ import type { InsertAssetPayload } from "./asset-picker-modal";
 const PANEL_MOTION_SECONDS = CANVAS_SIDE_PANEL_MOTION_MS / 1000;
 const PANEL_EASE = [0.22, 1, 0.36, 1] as const;
 
-type PanelTab = "canvas" | "assets" | "prompts";
-
 type Props = {
     nodes: CanvasNodeData[];
     selectedNodeIds: Set<string>;
@@ -56,7 +54,8 @@ const STATUS_COLOR: Record<string, string> = {
 export const CanvasSidePanel = memo(function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreviewNode, onInsertAsset, onApplyPrompt }: Props) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const [tab, setTab] = useState<PanelTab>("canvas");
+    const tab = useCanvasSidePanelStore((state) => state.tab);
+    const setTab = useCanvasSidePanelStore((state) => state.setTab);
     const width = useCanvasSidePanelStore((state) => state.width);
     const panelOpen = useCanvasSidePanelStore((state) => state.panelOpen);
     const panelMounted = useCanvasSidePanelStore((state) => state.panelMounted);

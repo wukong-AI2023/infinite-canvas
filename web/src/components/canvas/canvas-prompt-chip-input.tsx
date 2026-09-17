@@ -1,14 +1,17 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { Image } from "antd";
-import { FileText, Image as ImageIcon, Music2, Video } from "lucide-react";
+import { FileText, Folder, Image as ImageIcon, Music2, Video } from "lucide-react";
 
 import i18n from "@/i18n";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { CANVAS_REFERENCE_PATTERN, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
+import { getImagePreviewRevision, previewUrlFor, subscribeImagePreviews } from "@/services/image-storage";
 import { isImeComposing, isPlainEnterKey } from "@/lib/keyboard-event";
 import { useThemeStore } from "@/stores/use-theme-store";
+
+type AssetMention = { id: string; title: string; previewUrl?: string; storageKey?: string };
 
 type Props = {
     value: string;
@@ -18,34 +21,52 @@ type Props = {
     className?: string;
     style?: CSSProperties;
     placeholder?: string;
+    allowImageMentions?: boolean;
+    assetMentions?: AssetMention[];
+    onPickAsset?: (assetId: string) => CanvasResourceReference | null;
 };
 
 type MentionState = { query: string; rect: DOMRect | null };
-type Token = { type: "text"; value: string } | { type: "reference"; nodeId: string };
+type Token = { type: "text"; value: string } | { type: "reference"; nodeId: string; source: "node" | "attached" };
 
 export type CanvasPromptChipInputHandle = {
     insertReference: (reference: CanvasResourceReference) => void;
 };
 
 // Reference chips serialize to stable node IDs while their thumbnail and visible label follow the current reference order.
-export const CanvasPromptChipInput = forwardRef<CanvasPromptChipInputHandle, Props>(function CanvasPromptChipInput({ value, references, onChange, onSubmit, className, style, placeholder }, ref) {
+export const CanvasPromptChipInput = forwardRef<CanvasPromptChipInputHandle, Props>(function CanvasPromptChipInput({ value, references, onChange, onSubmit, className, style, placeholder, allowImageMentions = true, assetMentions = [], onPickAsset }, ref) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const editorRef = useRef<HTMLDivElement>(null);
     const composingRef = useRef(false);
     const caretRangeRef = useRef<Range | null>(null);
     const lastEmittedRef = useRef(value);
+    const extraReferencesRef = useRef(new Map<string, CanvasResourceReference>());
+    useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
     const [mention, setMention] = useState<MentionState | null>(null);
     const [activeIndex, setActiveIndex] = useState(0);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const activeReferences = useMemo(() => references.filter((item) => item.active), [references]);
-    const referenceById = useMemo(() => new Map(activeReferences.map((item) => [item.nodeId, item])), [activeReferences]);
+    const referenceById = useMemo(() => {
+        const map = new Map(activeReferences.map((item) => [item.nodeId, item]));
+        extraReferencesRef.current.forEach((item, id) => {
+            if (!map.has(id)) map.set(id, item);
+        });
+        return map;
+    }, [activeReferences]);
     const tokens = useMemo(() => parseTokens(value), [value]);
-    const candidates = useMemo(() => {
+    const connectedCandidates = useMemo(() => {
+        const items = allowImageMentions ? activeReferences : activeReferences.filter((item) => item.kind !== "image");
         if (!mention) return [];
         const query = mention.query.trim().toLowerCase();
-        if (!query) return activeReferences;
-        return activeReferences.filter((item) => `${item.label} ${item.title} ${item.kind} ${item.text || ""}`.toLowerCase().includes(query));
-    }, [activeReferences, mention]);
+        if (!query) return items;
+        return items.filter((item) => `${item.label} ${item.title} ${item.kind} ${item.text || ""}`.toLowerCase().includes(query));
+    }, [activeReferences, allowImageMentions, mention]);
+    const assetCandidates = useMemo(() => {
+        if (!mention || !allowImageMentions || !onPickAsset) return [];
+        const query = mention.query.trim().toLowerCase();
+        const items = query ? assetMentions.filter((item) => item.title.toLowerCase().includes(query)) : assetMentions;
+        return items.slice(0, 20);
+    }, [allowImageMentions, assetMentions, mention, onPickAsset]);
 
     useEffect(() => {
         const editor = editorRef.current;
@@ -85,7 +106,7 @@ export const CanvasPromptChipInput = forwardRef<CanvasPromptChipInputHandle, Pro
     };
     const syncMention = () => {
         const match = /@([^\s@]*)$/.exec(textBeforeCaret());
-        if (!match || !activeReferences.length) return closeMention();
+        if (!match) return closeMention();
         setMention({ query: match[1] || "", rect: caretRect() });
         setActiveIndex(0);
     };
@@ -105,6 +126,7 @@ export const CanvasPromptChipInput = forwardRef<CanvasPromptChipInputHandle, Pro
             selection?.removeAllRanges();
             selection?.addRange(caretRangeRef.current);
         }
+        extraReferencesRef.current.set(reference.nodeId, reference);
         removeActiveMention();
         const range = selection?.rangeCount && editor.contains(selection.getRangeAt(0).commonAncestorContainer) ? selection.getRangeAt(0) : null;
         const chip = createReferenceChip(reference, theme, setImagePreview);
@@ -146,10 +168,21 @@ export const CanvasPromptChipInput = forwardRef<CanvasPromptChipInputHandle, Pro
                 onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
                     event.stopPropagation();
                     if (isImeComposing(event)) return;
-                    if (mention && candidates.length) {
-                        if (event.key === "ArrowDown") { event.preventDefault(); setActiveIndex((index) => (index + 1) % candidates.length); return; }
-                        if (event.key === "ArrowUp") { event.preventDefault(); setActiveIndex((index) => (index - 1 + candidates.length) % candidates.length); return; }
-                        if (event.key === "Enter") { event.preventDefault(); insertReference(candidates[Math.min(activeIndex, candidates.length - 1)]); return; }
+                    if (mention && (connectedCandidates.length || assetCandidates.length)) {
+                        const total = connectedCandidates.length + assetCandidates.length;
+                        if (event.key === "ArrowDown") { event.preventDefault(); setActiveIndex((index) => (index + 1) % total); return; }
+                        if (event.key === "ArrowUp") { event.preventDefault(); setActiveIndex((index) => (index - 1 + total) % total); return; }
+                        if (event.key === "Enter") {
+                            event.preventDefault();
+                            const index = Math.min(activeIndex, total - 1);
+                            if (index < connectedCandidates.length) insertReference(connectedCandidates[index]);
+                            else {
+                                const asset = assetCandidates[index - connectedCandidates.length];
+                                const next = asset ? onPickAsset?.(asset.id) : null;
+                                if (next) insertReference(next);
+                            }
+                            return;
+                        }
                         if (event.key === "Escape") { event.preventDefault(); closeMention(); return; }
                     }
                     if ((event.key === "Backspace" || event.key === "Delete") && deleteAdjacentReference(event.key)) { event.preventDefault(); requestAnimationFrame(syncFromEditor); return; }
@@ -160,44 +193,69 @@ export const CanvasPromptChipInput = forwardRef<CanvasPromptChipInputHandle, Pro
                 onMouseUp={saveCaret}
                 onBlur={() => { saveCaret(); window.setTimeout(closeMention, 120); }}
             />
-            {mention && candidates.length ? <MentionMenu rect={mention.rect} references={candidates} activeIndex={Math.min(activeIndex, candidates.length - 1)} theme={theme} onSelect={insertReference} /> : null}
+            {mention && (connectedCandidates.length || assetCandidates.length) ? (
+                <MentionMenu
+                    rect={mention.rect}
+                    connected={connectedCandidates}
+                    assets={assetCandidates}
+                    activeIndex={Math.min(activeIndex, connectedCandidates.length + assetCandidates.length - 1)}
+                    theme={theme}
+                    onSelectConnected={insertReference}
+                    onSelectAsset={(assetId) => {
+                        const next = onPickAsset?.(assetId);
+                        if (next) insertReference(next);
+                    }}
+                />
+            ) : null}
             {imagePreview ? <Image src={imagePreview} alt={i18n.t("canvas.composer.imagePreview")} style={{ display: "none" }} preview={{ visible: true, src: imagePreview, onVisibleChange: (visible) => !visible && setImagePreview(null) }} /> : null}
         </div>
     );
 });
 
-function MentionMenu({ rect, references, activeIndex, theme, onSelect }: { rect: DOMRect | null; references: CanvasResourceReference[]; activeIndex: number; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; onSelect: (reference: CanvasResourceReference) => void }) {
+function MentionMenu({ rect, connected, assets, activeIndex, theme, onSelectConnected, onSelectAsset }: { rect: DOMRect | null; connected: CanvasResourceReference[]; assets: AssetMention[]; activeIndex: number; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; onSelectConnected: (reference: CanvasResourceReference) => void; onSelectAsset: (assetId: string) => void }) {
     const selectedRef = useRef(false);
     const activeItemRef = useRef<HTMLButtonElement | null>(null);
-    useEffect(() => { activeItemRef.current?.scrollIntoView({ block: "nearest" }); }, [activeIndex, references]);
-    const selectReference = (reference: CanvasResourceReference) => {
+    useEffect(() => { activeItemRef.current?.scrollIntoView({ block: "nearest" }); }, [activeIndex, assets, connected]);
+    const pick = (action: () => void) => {
         if (selectedRef.current) return;
         selectedRef.current = true;
-        onSelect(reference);
+        action();
     };
     const stopCanvasInteraction = (event: PointerEvent | MouseEvent) => event.stopPropagation();
     const menuWidth = 256;
-    const maxMenuHeight = 224;
+    const maxMenuHeight = 280;
     const gap = 6;
     const anchor = rect || new DOMRect(16, 16, 0, 0);
     const left = clamp(anchor.left, 8, window.innerWidth - menuWidth - 8);
     const showAbove = anchor.bottom + gap + maxMenuHeight > window.innerHeight && anchor.top - gap - maxMenuHeight >= 0;
     const top = showAbove ? anchor.top - gap - maxMenuHeight : anchor.bottom + gap;
     return createPortal(
-        <div data-canvas-resource-mention-menu="true" className="fixed z-[1100] max-h-56 w-64 overflow-y-auto rounded-xl border p-1 shadow-2xl backdrop-blur-md" style={{ left, top, background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }} onPointerDown={stopCanvasInteraction} onMouseDown={stopCanvasInteraction} onClick={(event) => event.stopPropagation()}>
-            {references.map((reference, index) => (
-                <button key={reference.id} ref={index === activeIndex ? activeItemRef : undefined} type="button" className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition" style={{ background: index === activeIndex ? theme.toolbar.activeBg : "transparent", color: index === activeIndex ? theme.toolbar.activeText : theme.node.text }} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectReference(reference); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectReference(reference); }}>
+        <div data-canvas-resource-mention-menu="true" className="fixed z-[1100] max-h-72 w-64 overflow-y-auto rounded-xl border p-1 shadow-2xl backdrop-blur-md" style={{ left, top, background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }} onPointerDown={stopCanvasInteraction} onMouseDown={stopCanvasInteraction} onClick={(event) => event.stopPropagation()}>
+            {connected.length ? <div className="px-2 py-1 text-[11px] font-medium opacity-55">{i18n.t("canvas.references.connected")}</div> : null}
+            {connected.map((reference, index) => (
+                <button key={reference.id} ref={index === activeIndex ? activeItemRef : undefined} type="button" className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition" style={{ background: index === activeIndex ? theme.toolbar.activeBg : "transparent", color: index === activeIndex ? theme.toolbar.activeText : theme.node.text }} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); pick(() => onSelectConnected(reference)); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); pick(() => onSelectConnected(reference)); }}>
                     <ReferencePreview reference={reference} />
                     <span className="min-w-0 flex-1"><span className="block font-medium">{reference.label}</span><span className="block truncate opacity-65">{reference.text || reference.title}</span></span>
                 </button>
             ))}
+            {assets.length ? <div className="mt-1 flex items-center gap-1 px-2 py-1 text-[11px] font-medium opacity-55"><Folder className="size-3" />{i18n.t("canvas.references.assets")}</div> : null}
+            {assets.map((asset, index) => {
+                const itemIndex = connected.length + index;
+                return (
+                    <button key={asset.id} ref={itemIndex === activeIndex ? activeItemRef : undefined} type="button" className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition" style={{ background: itemIndex === activeIndex ? theme.toolbar.activeBg : "transparent", color: itemIndex === activeIndex ? theme.toolbar.activeText : theme.node.text }} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); pick(() => onSelectAsset(asset.id)); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); pick(() => onSelectAsset(asset.id)); }}>
+                        {asset.previewUrl ? <img src={asset.previewUrl} alt="" className="size-9 rounded-md object-cover" /> : <span className="grid size-9 place-items-center rounded-md"><ImageIcon className="size-4" /></span>}
+                        <span className="min-w-0 flex-1 truncate font-medium">{asset.title}</span>
+                    </button>
+                );
+            })}
         </div>,
         document.body,
     );
 }
 
 function ReferencePreview({ reference }: { reference: CanvasResourceReference }) {
-    if (reference.kind === "image" && reference.previewUrl) return <img src={reference.previewUrl} alt="" className="size-9 rounded-md object-cover" />;
+    const preview = reference.kind === "image" ? (reference.previewUrl || previewUrlFor(reference.storageKey)) : "";
+    if (preview) return <img src={preview} alt="" className="size-9 rounded-md object-cover" />;
     if (reference.kind === "video" && reference.previewUrl) return <video src={reference.previewUrl} className="size-9 rounded-md object-cover" muted preload="metadata" />;
     const Icon = reference.kind === "audio" ? Music2 : reference.kind === "video" ? Video : reference.kind === "image" ? ImageIcon : FileText;
     return <span className="grid size-9 shrink-0 place-items-center rounded-md"><Icon className="size-4" /></span>;
@@ -207,15 +265,17 @@ function createReferenceChip(reference: CanvasResourceReference, theme: (typeof 
     const wrapper = document.createElement("span");
     wrapper.contentEditable = "false";
     wrapper.dataset.referenceNodeId = reference.nodeId;
+    wrapper.dataset.referenceKind = reference.source === "attached" ? "asset" : "node";
     wrapper.className = "mx-px inline-flex h-7 max-w-44 items-center gap-1 overflow-hidden rounded-md border px-1 text-xs leading-none align-middle";
     Object.assign(wrapper.style, { background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.text } as CSSProperties);
-    if (reference.kind === "image" && reference.previewUrl) {
+    const preview = reference.kind === "image" ? (reference.previewUrl || previewUrlFor(reference.storageKey)) : "";
+    if (preview) {
         const image = document.createElement("img");
-        image.src = reference.previewUrl;
+        image.src = preview;
         image.alt = reference.title;
         image.className = "size-5 shrink-0 rounded object-cover";
         wrapper.appendChild(image);
-        wrapper.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); onImagePreview(reference.previewUrl || ""); });
+        wrapper.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); onImagePreview(preview); });
     }
     const text = document.createElement("span");
     text.dataset.referenceLabel = "true";
@@ -230,6 +290,16 @@ function updateReferenceChip(chip: HTMLElement, reference: CanvasResourceReferen
     const label = chip.querySelector<HTMLElement>("[data-reference-label]");
     if (label) label.textContent = reference.label;
     chip.title = reference.text || reference.title;
+    const preview = reference.kind === "image" ? (reference.previewUrl || previewUrlFor(reference.storageKey)) : "";
+    if (!preview) return;
+    let image = chip.querySelector("img");
+    if (!image) {
+        image = document.createElement("img");
+        image.className = "size-5 shrink-0 rounded object-cover";
+        image.alt = reference.title;
+        chip.insertBefore(image, chip.firstChild);
+    }
+    image.src = preview;
 }
 
 function serializeEditor(editor: HTMLElement) {
@@ -241,7 +311,7 @@ function serializeNodes(nodes: NodeListOf<ChildNode>) {
         if (node.nodeType === Node.TEXT_NODE) result += node.textContent || "";
         if (!(node instanceof HTMLElement)) return;
         const nodeId = node.dataset.referenceNodeId;
-        if (nodeId) result += `@[node:${nodeId}]`;
+        if (nodeId) result += `@[${node.dataset.referenceKind === "asset" ? "asset" : "node"}:${nodeId}]`;
         else if (node.tagName === "BR") result += "\n";
         else result += serializeNodes(node.childNodes);
     });
@@ -323,7 +393,7 @@ function parseTokens(value: string): Token[] {
     for (const match of value.matchAll(CANVAS_REFERENCE_PATTERN)) {
         if (match.index === undefined) continue;
         if (match.index > lastIndex) tokens.push({ type: "text", value: value.slice(lastIndex, match.index) });
-        tokens.push({ type: "reference", nodeId: match[1] });
+        tokens.push({ type: "reference", nodeId: match[2], source: match[1] === "asset" ? "attached" : "node" });
         lastIndex = match.index + match[0].length;
     }
     if (lastIndex < value.length) tokens.push({ type: "text", value: value.slice(lastIndex) });

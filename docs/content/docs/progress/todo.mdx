@@ -7,3 +7,4 @@ description: Planned follow-up work
 
 - Replace the Claude Code CLI adapter with a Claude Agent SDK adapter and improve the tool queue, following the [Local Agent Integration Plan](/docs/progress/local-agent-integration-plan).
 - Add Skill installation from web search, Skill resource-file management, and controlled local-memory persistence.
+- If canvas pan/zoom stutters with 100+ image nodes, load WebP previews only for nodes in the viewport (do not prefetch every node's blob URL). Wait until stuttering actually shows up; do not do this while 1600 previews still feel smooth.

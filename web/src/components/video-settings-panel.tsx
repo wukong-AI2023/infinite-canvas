@@ -6,7 +6,7 @@ import i18n from "@/i18n";
 import { ImageSettingsTheme } from "@/components/image-settings-panel";
 import { type CanvasTheme } from "@/lib/canvas-theme";
 import { clampVideoSeconds, computeVideoSize, inferVideoRatio, parseVideoResolution, readVideoDimensions, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, videoRatioOptions } from "@/lib/media-size";
-import { matchScriptResolution, resolveVideoScriptSettings, type ModelScriptVideoSettings } from "@/lib/model-script-settings";
+import { matchScriptResolution, resolveVideoQualityValue, resolveVideoScriptSettings, type ModelScriptVideoSettings } from "@/lib/model-script-settings";
 import { type AiConfig } from "@/stores/use-config-store";
 
 const resolutionOptions = [
@@ -41,10 +41,9 @@ export function VideoSettingsPanel({ config, model, onConfigChange, theme, showT
     const secondsMax = scriptSettings?.duration?.max ?? VIDEO_SECONDS_MAX;
     const seconds = Number(clampVideoSeconds(config.videoSeconds || "6", secondsMin, secondsMax));
     const videoMode = normalizeVideoModeValue(config.videoMode);
-    const resolution = parseVideoResolution(config.vquality);
-    const selectedResolution = matchScriptResolution(scriptSettings?.resolution, config.vquality)?.value || (hideCustomResolution ? config.vquality : resolution);
+    const selectedResolution = resolveVideoQualityValue(config.vquality, scriptSettings);
     const selectedRatio = inferVideoRatio(config.size || "auto");
-    const dimensions = readVideoDimensions(config.size || "auto", selectedResolution || resolution, selectedRatio);
+    const dimensions = readVideoDimensions(config.size || "auto", selectedResolution, selectedRatio);
     const optionCount = qualityOptions.length + (hideCustomResolution ? 0 : 1);
     const qualityGridClass = optionCount <= 2 ? "grid grid-cols-2 gap-2.5" : optionCount === 3 ? "grid grid-cols-3 gap-2.5" : "grid grid-cols-4 gap-2.5";
     const applySize = (nextResolution: string, ratio: string) => {
@@ -63,11 +62,11 @@ export function VideoSettingsPanel({ config, model, onConfigChange, theme, showT
                 <SettingGroup title={t("settingsPanels.video.quality")} color={theme.node.muted}>
                     <div className={qualityGridClass}>
                         {qualityOptions.map((item) => (
-                            <OptionPill key={item.value} selected={hideCustomResolution ? matchScriptResolution([item], config.vquality)?.value === item.value : resolution === item.value} theme={theme} onClick={() => selectResolution(item.value)}>
+                            <OptionPill key={item.value} selected={matchScriptResolution([item], selectedResolution)?.value === item.value} theme={theme} onClick={() => selectResolution(item.value)}>
                                 {item.label}
                             </OptionPill>
                         ))}
-                        {hideCustomResolution ? null : <ResolutionInput value={resolution} theme={theme} onChange={selectResolution} />}
+                        {hideCustomResolution ? null : <ResolutionInput value={selectedResolution} theme={theme} onChange={selectResolution} />}
                     </div>
                 </SettingGroup>
                 <SettingGroup title={t("settingsPanels.video.size")} color={theme.node.muted}>
@@ -116,9 +115,10 @@ export function VideoSettingsPanel({ config, model, onConfigChange, theme, showT
 }
 
 export function videoResolutionLabel(value: string, settings?: ModelScriptVideoSettings) {
-    const matched = matchScriptResolution(settings?.resolution, value);
+    const resolved = resolveVideoQualityValue(value, settings);
+    const matched = matchScriptResolution(settings?.resolution, resolved);
     if (matched) return matched.label;
-    return `${parseVideoResolution(value)}p`;
+    return `${parseVideoResolution(resolved)}p`;
 }
 
 export function videoSizeLabel(value: string) {

@@ -23,7 +23,7 @@ const previewUrls = new Map<string, string>();
 const previewListeners = new Set<() => void>();
 let previewRevision = 0;
 let previewQueue: Promise<unknown> = Promise.resolve();
-const IMAGE_PREVIEW_VERSION = 1;
+const IMAGE_PREVIEW_VERSION = 3;
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
 const IMAGE_REMOTE_LOAD_TIMEOUT_MS = 10 * 60_000;
 const IMAGE_DECODE_TIMEOUT_MS = 10_000;
@@ -269,7 +269,12 @@ export async function ensureImagePreview(storageKey?: string) {
     const cached = previewUrls.get(storageKey);
     if (cached) return cached;
     const stored = await previewStore.getItem<StoredImagePreview>(storageKey).catch(() => null);
-    if (stored?.version === IMAGE_PREVIEW_VERSION) return stored.blob ? cacheImagePreview(storageKey, stored.blob) : undefined;
+    if (stored?.blob) {
+        const url = cacheImagePreview(storageKey, stored.blob);
+        if (stored.version !== IMAGE_PREVIEW_VERSION) queueImagePreview(storageKey);
+        return url;
+    }
+    if (stored?.version === IMAGE_PREVIEW_VERSION) return undefined;
     queueImagePreview(storageKey);
     return undefined;
 }
@@ -354,8 +359,15 @@ export async function deleteStoredImages(keys: Iterable<string>) {
     );
 }
 
+let liveCanvasUsage: unknown = null;
+
+export function setLiveCanvasUsage(value: unknown) {
+    liveCanvasUsage = value;
+}
+
 export async function cleanupUnusedImages(usedData: unknown) {
     const usedKeys = collectImageStorageKeys(usedData);
+    collectImageStorageKeys(liveCanvasUsage, usedKeys);
     await Promise.all([
         imageLogStore.iterate((value) => {
             collectImageStorageKeys(value, usedKeys);

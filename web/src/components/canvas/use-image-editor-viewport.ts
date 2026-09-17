@@ -7,10 +7,13 @@ const maxZoom = 4;
 const zoomStep = 1.2;
 const viewportPadding = 16;
 
-export function useImageEditorViewport(image: ImageSize | null, open: boolean) {
+export function useImageEditorViewport(image: ImageSize | null, open: boolean, options?: { leftDragPan?: boolean }) {
+    const leftDragPan = options?.leftDragPan === true;
     const viewportNodeRef = useRef<HTMLDivElement>(null);
     const stageRef = useRef<HTMLDivElement>(null);
     const panRef = useRef<{ pointerId: number; x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
+    const zoomRef = useRef(minZoom);
+    const suppressClickRef = useRef(false);
     const zoomAnchorRef = useRef<{ zoom: number; ratioX: number; ratioY: number; viewportX: number; viewportY: number } | null>(null);
     const [viewportElement, setViewportElement] = useState<HTMLDivElement | null>(null);
     const [viewportSize, setViewportSize] = useState<ImageSize>({ width: 0, height: 0 });
@@ -18,6 +21,7 @@ export function useImageEditorViewport(image: ImageSize | null, open: boolean) {
     const [isPanning, setIsPanning] = useState(false);
     const [spacePressed, setSpacePressed] = useState(false);
     const spacePressedRef = useRef(false);
+    zoomRef.current = zoom;
     const viewportRef = useCallback((node: HTMLDivElement | null) => {
         viewportNodeRef.current = node;
         setViewportElement(node);
@@ -26,6 +30,7 @@ export function useImageEditorViewport(image: ImageSize | null, open: boolean) {
     useEffect(() => {
         if (!open) return;
         zoomAnchorRef.current = null;
+        suppressClickRef.current = false;
         setZoom(minZoom);
     }, [open, image?.width, image?.height]);
 
@@ -137,19 +142,22 @@ export function useImageEditorViewport(image: ImageSize | null, open: boolean) {
     }, [open, setZoomAround, viewportElement, zoom]);
 
     const startPan = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-        if (event.button !== 1 && !(event.button === 0 && spacePressedRef.current)) return;
+        const leftPan = leftDragPan && event.button === 0 && zoomRef.current > minZoom + 0.001;
+        if (event.button !== 1 && !(event.button === 0 && spacePressedRef.current) && !leftPan) return;
         event.preventDefault();
         event.stopPropagation();
+        suppressClickRef.current = false;
         const viewport = event.currentTarget;
         panRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop };
         viewport.setPointerCapture(event.pointerId);
         setIsPanning(true);
-    }, []);
+    }, [leftDragPan]);
     const movePan = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
         const pan = panRef.current;
         if (!pan || event.pointerId !== pan.pointerId) return;
         event.preventDefault();
         event.stopPropagation();
+        if (Math.abs(event.clientX - pan.x) > 3 || Math.abs(event.clientY - pan.y) > 3) suppressClickRef.current = true;
         event.currentTarget.scrollLeft = pan.scrollLeft - (event.clientX - pan.x);
         event.currentTarget.scrollTop = pan.scrollTop - (event.clientY - pan.y);
     }, []);
@@ -181,6 +189,11 @@ export function useImageEditorViewport(image: ImageSize | null, open: boolean) {
             onPointerUpCapture: stopPan,
             onPointerCancelCapture: stopPan,
             onAuxClick: preventAuxClick,
+        },
+        consumeClickSuppression() {
+            const suppressed = suppressClickRef.current;
+            suppressClickRef.current = false;
+            return suppressed;
         },
         canZoomIn: zoom < maxZoom,
         canZoomOut: zoom > minZoom,

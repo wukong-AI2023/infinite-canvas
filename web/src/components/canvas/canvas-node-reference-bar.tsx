@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
-import { FileText, Image as ImageIcon, Music2, Plus, Video, X } from "lucide-react";
+import { ArrowLeftRight, FileText, Image as ImageIcon, Music2, Plus, Video, X } from "lucide-react";
 import { Popover } from "antd";
 import { useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
@@ -10,7 +10,7 @@ import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-refer
 import { getImagePreviewRevision, previewUrlFor, subscribeImagePreviews } from "@/services/image-storage";
 import { useThemeStore } from "@/stores/use-theme-store";
 
-export function CanvasNodeReferenceBar({ nodeId, references, onInsert, onRemove, onReorder, onStartSelection }: { nodeId: string; references: CanvasResourceReference[]; onInsert?: (reference: CanvasResourceReference) => void; onRemove?: (nodeId: string) => void; onReorder?: (nodeIds: string[]) => void; onStartSelection?: (nodeId: string) => void }) {
+export function CanvasNodeReferenceBar({ nodeId, references, frameMode, onInsert, onRemove, onReorder, onStartSelection }: { nodeId: string; references: CanvasResourceReference[]; frameMode?: boolean; onInsert?: (reference: CanvasResourceReference) => void; onRemove?: (nodeId: string) => void; onReorder?: (nodeIds: string[]) => void; onStartSelection?: (nodeId: string) => void }) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [previewOrder, setPreviewOrder] = useState(() => references.map((reference) => reference.nodeId));
@@ -53,10 +53,64 @@ export function CanvasNodeReferenceBar({ nodeId, references, onInsert, onRemove,
         requestAnimationFrame(() => { suppressClickRef.current = false; });
     };
 
+    const imageRefs = orderedReferences.filter((item) => item.kind === "image");
+    const swapFrames = () => {
+        if (imageRefs.length < 2) return;
+        const next = previewOrderRef.current.slice();
+        const first = next.indexOf(imageRefs[0].nodeId);
+        const second = next.indexOf(imageRefs[1].nodeId);
+        if (first < 0 || second < 0) return;
+        [next[first], next[second]] = [next[second], next[first]];
+        previewOrderRef.current = next;
+        setPreviewOrder(next);
+        onReorder?.(next);
+    };
+
     return (
         <div className="mb-2">
             <div className="mb-1.5 text-[11px] font-medium" style={{ color: theme.node.muted }}>{t("canvas.references.title")}</div>
-            <div className="thin-scrollbar flex min-h-12 gap-2 overflow-x-auto pb-1">
+            {frameMode && imageRefs.length ? (
+                <div className="mb-2 flex items-center gap-2">
+                    <span className="rounded-md px-1.5 py-0.5 text-[10px] font-medium" style={{ background: theme.toolbar.activeBg, color: theme.node.text }}>{t("canvas.references.firstFrame")}</span>
+                    {imageRefs.slice(0, 2).map((reference, index) => (
+                        <div key={reference.nodeId} className="flex items-center gap-2">
+                            {index === 1 ? (
+                                <button type="button" className="grid size-7 place-items-center rounded-full transition hover:opacity-70" style={{ color: theme.node.muted }} title={t("canvas.references.swapFrames")} onClick={swapFrames}>
+                                    <ArrowLeftRight className="size-3.5" />
+                                </button>
+                            ) : null}
+                            <ReferenceItem
+                                reference={reference}
+                                number={index + 1}
+                                dragging={draggingId === reference.nodeId}
+                                popoverOpen={draggingId ? false : undefined}
+                                onClick={() => {
+                                    if (suppressClickRef.current) return;
+                                    onInsert?.(reference);
+                                }}
+                                onRemove={reference.nodeId === nodeId || !onRemove ? undefined : () => onRemove(reference.nodeId)}
+                                onDragStart={(event) => {
+                                    suppressClickRef.current = true;
+                                    setDraggingId(reference.nodeId);
+                                    event.dataTransfer.effectAllowed = "move";
+                                    event.dataTransfer.setData("text/plain", reference.nodeId);
+                                }}
+                                onDragOverItem={(event) => {
+                                    event.preventDefault();
+                                    const rect = event.currentTarget.getBoundingClientRect();
+                                    moveNear(reference.nodeId, event.clientX > rect.left + rect.width / 2);
+                                }}
+                                onDragEnd={finishDrag}
+                                onDrop={(event) => event.preventDefault()}
+                            />
+                        </div>
+                    ))}
+                    <button type="button" className="grid size-12 shrink-0 place-items-center rounded-xl border bg-transparent transition hover:opacity-70" style={{ borderColor: theme.toolbar.border, color: theme.node.muted }} title={t("canvas.references.select")} onClick={() => onStartSelection?.(nodeId)}>
+                        <Plus className="size-4" />
+                    </button>
+                </div>
+            ) : null}
+            <div className={`thin-scrollbar flex min-h-12 gap-2 overflow-x-auto pb-1 ${frameMode ? "hidden" : ""}`}>
                 {orderedReferences.map((reference) => {
                     const number = orderedReferences.slice(0, orderedReferences.findIndex((item) => item.nodeId === reference.nodeId) + 1).filter((item) => item.kind === reference.kind).length;
                     return (

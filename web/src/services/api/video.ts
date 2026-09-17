@@ -3,7 +3,7 @@ import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
 import { dataUrlToFile, readFileAsDataUrl } from "@/lib/image-utils";
-import { clampVideoSeconds, computeVideoSize, inferVideoRatio } from "@/lib/media-size";
+import { clampVideoSeconds, computeVideoSize, inferVideoRatio, resolveAutoVideoRatio } from "@/lib/media-size";
 import { parseModelScriptSettings, scriptVideoResolution } from "@/lib/model-script-settings";
 import { getMediaBlob, resolveMediaUrl, uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
@@ -110,9 +110,9 @@ async function createPluginVideoTask(config: AiConfig, model: string, script: st
             audios,
             params: {
                 seconds: normalizeVideoSeconds(config.videoSeconds, scriptSettings?.duration?.min, scriptSettings?.duration?.max),
-                size: normalizeVideoSize(config.size, config.vquality),
+                size: normalizeVideoSize(config.size, config.vquality, references[0]),
                 resolution: scriptVideoResolution(config.vquality, scriptSettings) || normalizeVideoResolution(config.vquality),
-                ratio: videoAspectRatio(config.size),
+                ratio: videoAspectRatio(config.size, references[0]),
                 generateAudio: boolConfig(config.videoGenerateAudio, true),
                 watermark: boolConfig(config.videoWatermark, false),
                 mode: resolveVideoMode(config.videoMode, refs.length),
@@ -158,7 +158,7 @@ async function createOpenAIVideoTask(config: AiConfig, model: string, prompt: st
     body.append("model", modelOptionName(model));
     body.append("prompt", prompt);
     body.append("seconds", normalizeVideoSeconds(config.videoSeconds));
-    body.append("size", normalizeVideoSize(config.size, config.vquality) || "1280x720");
+    body.append("size", normalizeVideoSize(config.size, config.vquality, references[0]) || "1280x720");
     body.append("resolution_name", normalizeVideoResolution(config.vquality));
     body.append("generate_audio", String(boolConfig(config.videoGenerateAudio, true)));
     body.append("watermark", String(boolConfig(config.videoWatermark, false)));
@@ -229,7 +229,7 @@ async function createGeminiVideoTask(config: AiConfig, model: string, prompt: st
             data: {
                 instances: [instance],
                 parameters: {
-                    aspectRatio: videoAspectRatio(config.size),
+                    aspectRatio: videoAspectRatio(config.size, references[0]),
                     durationSeconds: Number(normalizeVideoSeconds(config.videoSeconds)) || 8,
                     resolution: normalizeVideoResolution(config.vquality),
                     generateAudio: boolConfig(config.videoGenerateAudio, true),
@@ -284,9 +284,8 @@ function geminiVideoHeaders(config: Pick<AiConfig, "apiKey">) {
     return { "x-goog-api-key": config.apiKey, "Content-Type": "application/json" };
 }
 
-function videoAspectRatio(size: string) {
-    const ratio = inferVideoRatio(size);
-    return ratio === "auto" ? "16:9" : ratio;
+function videoAspectRatio(size: string, firstFrame?: { width?: number; height?: number }) {
+    return resolveAutoVideoRatio(size, firstFrame);
 }
 
 function parseDataUrlInline(dataUrl: string, fallbackType = "image/png"): GeminiInlineData {
@@ -323,11 +322,9 @@ function resolveVideoMode(mode: string | undefined, imageCount: number) {
     return "frames";
 }
 
-function normalizeVideoSize(value: string, resolution?: string) {
-    if (value === "auto") return null;
+function normalizeVideoSize(value: string, resolution?: string, firstFrame?: { width?: number; height?: number }) {
     if (/^\d+x\d+$/.test(value || "")) return value;
-    const ratio = inferVideoRatio(value || "16:9");
-    if (ratio === "auto") return null;
+    const ratio = resolveAutoVideoRatio(value || "auto", firstFrame);
     return computeVideoSize(resolution || "720", ratio);
 }
 

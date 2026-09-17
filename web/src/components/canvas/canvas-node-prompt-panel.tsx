@@ -4,7 +4,7 @@ import { Button, Modal, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 
 import { ModelPicker } from "@/components/model-picker";
-import { defaultConfig, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { defaultConfig, resolveModelForCapability, resolveModelScript, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
@@ -14,9 +14,11 @@ import { CanvasAudioSettingsPopover, type CanvasAudioSettingKey } from "./canvas
 import { CanvasPromptChipInput, type CanvasPromptChipInputHandle } from "./canvas-prompt-chip-input";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import { CanvasTextSettingsPopover } from "./canvas-text-settings-popover";
+import { parseModelScriptSettings, resolveVideoQualityValue } from "@/lib/model-script-settings";
 import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData } from "@/types/canvas";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { CanvasNodeReferenceBar } from "./canvas-node-reference-bar";
+import { assetCoverUrl, useAssetStore } from "@/stores/use-asset-store";
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
 
@@ -31,11 +33,12 @@ type CanvasNodePromptPanelProps = {
     onRemoveReference?: (nodeId: string) => void;
     onReorderReferences?: (nodeIds: string[]) => void;
     onStartReferenceSelection?: (nodeId: string) => void;
+    onPickAsset?: (assetId: string) => CanvasResourceReference | null;
     onImageSettingsOpenChange?: (open: boolean) => void;
     modeOverride?: CanvasNodeGenerationMode; // Plugin nodes set their generation type through useBuiltinPanel.mode.
 };
 
-export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfigChange, onGenerate, onStop, mentionReferences = [], onRemoveReference, onReorderReferences, onStartReferenceSelection, onImageSettingsOpenChange, modeOverride }: CanvasNodePromptPanelProps) {
+export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfigChange, onGenerate, onStop, mentionReferences = [], onRemoveReference, onReorderReferences, onStartReferenceSelection, onPickAsset, onImageSettingsOpenChange, modeOverride }: CanvasNodePromptPanelProps) {
     const { t } = useTranslation();
     const globalConfig = useEffectiveConfig();
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
@@ -51,6 +54,9 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const [expanded, setExpanded] = useState(false);
     const editorRef = useRef<CanvasPromptChipInputHandle>(null);
     const expandedEditorRef = useRef<CanvasPromptChipInputHandle>(null);
+    const imageAssets = useAssetStore((state) => state.assets).flatMap((asset) => (asset.kind === "image" && asset.data.storageKey ? [{ id: asset.id, title: asset.title, previewUrl: assetCoverUrl(asset), storageKey: asset.data.storageKey }] : []));
+    const allowImageMentions = mode !== "video" || config.videoMode === "reference";
+    const barReferences = allowImageMentions ? mentionReferences : mentionReferences.filter((item) => item.source !== "attached");
 
     useEffect(() => {
         setPrompt(promptValue);
@@ -85,13 +91,16 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                 <Button type="text" className="!absolute right-3 top-3 z-10 !h-8 !w-8 !min-w-8 shrink-0 !rounded-full !bg-transparent !p-0" style={{ color: theme.node.text }} icon={<Maximize2 className="size-3.5" />} onClick={openExpandedEditor} aria-label={t("canvas.promptPanel.expandEditor")} />
             </Tooltip>
             <div className="shrink-0">
-                <CanvasNodeReferenceBar nodeId={node.id} references={mentionReferences} onInsert={(reference) => editorRef.current?.insertReference(reference)} onRemove={onRemoveReference} onReorder={onReorderReferences} onStartSelection={onStartReferenceSelection} />
+                <CanvasNodeReferenceBar nodeId={node.id} references={barReferences} frameMode={mode === "video" && !allowImageMentions} onInsert={allowImageMentions ? (reference) => editorRef.current?.insertReference(reference) : undefined} onRemove={onRemoveReference} onReorder={onReorderReferences} onStartSelection={onStartReferenceSelection} />
             </div>
             <div className="min-h-0 flex-1">
                 <CanvasPromptChipInput
                     ref={editorRef}
                     value={prompt}
                     references={mentionReferences}
+                    allowImageMentions={allowImageMentions}
+                    assetMentions={imageAssets}
+                    onPickAsset={onPickAsset}
                     onChange={updatePrompt}
                     onSubmit={submit}
                     className="thin-scrollbar h-full w-full cursor-text resize-none rounded-xl px-3 py-2 text-sm leading-5 outline-none"
@@ -116,7 +125,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                         </>
                     ) : mode === "video" ? (
                         <>
-                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="video" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
+                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model, vquality: resolveVideoQualityValue(node.metadata?.vquality || config.vquality, parseModelScriptSettings(resolveModelScript(globalConfig, model))) })} capability="video" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
                             <CanvasVideoSettingsPopover config={config} buttonClassName="!h-10 !max-w-[220px] !justify-start !rounded-full !px-3" onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value))} />
                         </>
                     ) : mode === "audio" ? (
@@ -153,11 +162,14 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
             </div>
             <Modal title={t("canvas.promptPanel.editorTitle")} open={expanded} centered width={760} footer={null} onCancel={() => setExpanded(false)} destroyOnHidden>
                 <div data-canvas-no-zoom className="pt-2" onWheelCapture={(event) => event.stopPropagation()}>
-                    <CanvasNodeReferenceBar nodeId={node.id} references={mentionReferences} onInsert={(reference) => expandedEditorRef.current?.insertReference(reference)} onRemove={onRemoveReference} onReorder={onReorderReferences} onStartSelection={(nodeId) => { setExpanded(false); onStartReferenceSelection?.(nodeId); }} />
+                    <CanvasNodeReferenceBar nodeId={node.id} references={barReferences} frameMode={mode === "video" && !allowImageMentions} onInsert={allowImageMentions ? (reference) => expandedEditorRef.current?.insertReference(reference) : undefined} onRemove={onRemoveReference} onReorder={onReorderReferences} onStartSelection={(nodeId) => { setExpanded(false); onStartReferenceSelection?.(nodeId); }} />
                     <CanvasPromptChipInput
                         ref={expandedEditorRef}
                         value={prompt}
                         references={mentionReferences}
+                        allowImageMentions={allowImageMentions}
+                        assetMentions={imageAssets}
+                        onPickAsset={onPickAsset}
                         onChange={updatePrompt}
                         className="thin-scrollbar h-[52dvh] min-h-80 w-full cursor-text overflow-y-auto rounded-xl border p-4 text-[15px] leading-6 outline-none"
                         style={{ background: "transparent", borderColor: theme.toolbar.border, color: theme.node.text }}
@@ -182,7 +194,7 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         size: node.metadata?.size || globalConfig.size || defaultConfig.size,
         background: node.metadata?.background ?? globalConfig.background ?? defaultConfig.background,
         videoSeconds: node.metadata?.seconds || globalConfig.videoSeconds || defaultConfig.videoSeconds,
-        vquality: node.metadata?.vquality || globalConfig.vquality || defaultConfig.vquality,
+        vquality: resolveVideoQualityValue(node.metadata?.vquality || globalConfig.vquality, parseModelScriptSettings(resolveModelScript(globalConfig, resolveModelForCapability(globalConfig, node.metadata?.model, mode)))),
         videoGenerateAudio: node.metadata?.generateAudio || globalConfig.videoGenerateAudio || defaultConfig.videoGenerateAudio,
         videoWatermark: node.metadata?.watermark || globalConfig.videoWatermark || defaultConfig.videoWatermark,
         videoMode: node.metadata?.videoMode || globalConfig.videoMode || defaultConfig.videoMode,

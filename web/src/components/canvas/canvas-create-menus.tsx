@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ImageIcon, List, Music2, Settings2, Upload, Video, X } from "lucide-react";
+import { ImageIcon, List, Music2, Settings2, Video, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -77,7 +77,7 @@ export function ConnectionCreateOption({ theme, icon, title, description, onClic
     );
 }
 
-export function NodeCreateMenu({ position, scale, centeredInViewport = false, onCreate, onUpload, onClose, onMouseEnter, onMouseLeave }: { position: Position; scale: number; centeredInViewport?: boolean; onCreate: (type: string) => void; onUpload?: () => void; onClose: () => void; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
+export function NodeCreateMenu({ position, scale, centeredInViewport = false, onCreate, onClose, onMouseEnter, onMouseLeave }: { position: Position; scale: number; centeredInViewport?: boolean; onCreate: (type: string) => void; onClose: () => void; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const { t } = useTranslation();
     useNodeRegistryVersion();
@@ -113,7 +113,6 @@ export function NodeCreateMenu({ position, scale, centeredInViewport = false, on
                 {definitions.map((def) => (
                     <ConnectionCreateOption key={def.type} theme={theme} icon={def.icon} title={def.title} description={def.description} onClick={() => onCreate(def.type)} />
                 ))}
-                {onUpload ? <ConnectionCreateOption theme={theme} icon={<Upload className="size-5" />} title={t("canvas.toolbar.upload")} onClick={onUpload} /> : null}
             </div>
         </div>
     );

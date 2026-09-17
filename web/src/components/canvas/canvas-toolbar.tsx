@@ -1,10 +1,11 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Button, Tooltip } from "antd";
-import { Download, Home, Images, Plus, Puzzle, Upload } from "lucide-react";
+import { Download, FolderOpen, Home, Images, Plus, Puzzle, Upload } from "lucide-react";
 
 import { canvasThemes, isDarkTheme } from "@/lib/canvas-theme";
 import { getNodePluginId, listNodeDefinitions, useNodeRegistryVersion } from "@/lib/canvas/node-registry";
+import { useCanvasSidePanelStore } from "@/stores/use-canvas-side-panel-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useTranslation } from "react-i18next";
 import { NodeCreateMenu } from "./canvas-create-menus";
@@ -16,7 +17,6 @@ export function CanvasToolbar({
     onImportAsset,
     onExportProject,
     onAddExtensionNode,
-    onUpload,
     onCreateNode,
 }: {
     onHome: () => void;
@@ -25,10 +25,10 @@ export function CanvasToolbar({
     onImportAsset: () => void;
     onExportProject: () => void;
     onAddExtensionNode: (type: string) => void;
-    onUpload: () => void;
     onCreateNode: (type: string) => void;
 }) {
     const wrapRef = useRef<HTMLDivElement>(null);
+    const openAssetsTab = useCanvasSidePanelStore((state) => state.openAssetsTab);
     const { t } = useTranslation();
     const rootRef = useRef<HTMLDivElement>(null);
     const colorTheme = useThemeStore((state) => state.theme);
@@ -86,6 +86,9 @@ export function CanvasToolbar({
                 <ToolbarButton id="tool-create-project" label={t("canvas.create")} hovered={hovered} hoverStyle={hoverStyle} onHover={setHovered} onClick={onCreateProject}>
                     <Plus className="size-4.5" />
                 </ToolbarButton>
+                <ToolbarButton id="tool-assets" label={t("canvas.sidePanel.assets")} hovered={hovered} hoverStyle={hoverStyle} onHover={setHovered} onClick={openAssetsTab}>
+                    <FolderOpen className="size-4.5" />
+                </ToolbarButton>
                 <ToolbarButton id="tool-import-asset" label={t("canvas.importAsset")} hovered={hovered} hoverStyle={hoverStyle} onHover={setHovered} onClick={onImportAsset}>
                     <Upload className="size-4.5" />
                 </ToolbarButton>
@@ -132,10 +135,6 @@ export function CanvasToolbar({
                     centeredInViewport
                     onCreate={(type) => {
                         onCreateNode(type);
-                        setCreateMenuOpen(false);
-                    }}
-                    onUpload={() => {
-                        onUpload();
                         setCreateMenuOpen(false);
                     }}
                     onClose={() => setCreateMenuOpen(false)}

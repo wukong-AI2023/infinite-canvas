@@ -120,6 +120,19 @@ export function parseVideoResolutionPixels(value: string | undefined) {
     return parseVideoResolution(value);
 }
 
+export const DEFAULT_VIDEO_RATIO = "16:9";
+
+export function resolveVideoRatioFromImage(width?: number, height?: number) {
+    if (!width || !height) return DEFAULT_VIDEO_RATIO;
+    return inferVideoRatio(`${Math.round(width)}x${Math.round(height)}`);
+}
+
+export function resolveAutoVideoRatio(size: string, reference?: { width?: number; height?: number }) {
+    const current = inferVideoRatio(size);
+    if (current !== "auto") return current;
+    return resolveVideoRatioFromImage(reference?.width, reference?.height);
+}
+
 export function inferVideoRatio(size: string) {
     if (!size || size === "auto") return "auto";
     if (videoRatioOptions.some((item) => item.value === size)) return size;
@@ -150,7 +163,7 @@ export function computeVideoSize(resolution: string, ratio: string) {
 export function readVideoDimensions(size: string, resolution: string, ratio: string) {
     const pixels = parsePixelSize(size);
     if (pixels) return pixels;
-    const computed = computeVideoSize(resolution, ratio === "auto" ? "16:9" : ratio);
+    const computed = computeVideoSize(resolution, ratio === "auto" ? DEFAULT_VIDEO_RATIO : ratio);
     return parsePixelSize(computed) || { width: 0, height: 0 };
 }
 
