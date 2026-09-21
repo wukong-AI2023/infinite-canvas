@@ -1,7 +1,7 @@
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import i18n from "@/i18n";
 import { canvasNodeDisplaySrc } from "@/lib/canvas/canvas-image-preview";
-import { previewUrlFor } from "@/services/image-storage";
+import { imageThumbUrlFor } from "@/services/image-storage";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { imageToDataUrl } from "@/services/image-storage";
@@ -42,7 +42,7 @@ function attachedMentionReferences(node: CanvasNodeData): CanvasResourceReferenc
         label: item.title,
         title: item.title,
         storageKey: item.storageKey,
-        previewUrl: previewUrlFor(item.storageKey),
+        previewUrl: imageThumbUrlFor(item.storageKey),
         width: item.width,
         height: item.height,
         active: true,

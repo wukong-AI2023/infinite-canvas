@@ -6,6 +6,7 @@ import type { CanvasNodeContentProps } from "@infinite-canvas/plugin-sdk";
 // 预设便签色(点选切换),并额外提供自定义取色
 const PRESET_COLORS = ["#fde68a", "#fca5a5", "#fdba74", "#a7f3d0", "#bfdbfe", "#ddd6fe", "#f9a8d4", "#e7e5e4"];
 const DEFAULT_COLOR = PRESET_COLORS[0];
+const DEFAULT_FONT_SIZE = 15;
 
 function StickyNoteContent({ ctx }: CanvasNodeContentProps) {
     const [editing, setEditing] = useState(false);
@@ -18,6 +19,8 @@ function StickyNoteContent({ ctx }: CanvasNodeContentProps) {
     // pluginColor 是插件自定义 metadata 字段(读出为 unknown,按需断言)
     const committedColor = (ctx.node.metadata?.pluginColor as string | undefined) || DEFAULT_COLOR;
     const color = draftColor ?? committedColor;
+    const rawSize = Number(ctx.node.metadata?.fontSize ?? ctx.node.metadata?.pluginFontSize);
+    const fontSize = Number.isFinite(rawSize) && rawSize > 0 ? rawSize : DEFAULT_FONT_SIZE;
     const content = (ctx.node.metadata?.content as string | undefined) || "";
 
     // 点击便利贴外部时:退出编辑并收起调色板。
@@ -130,10 +133,10 @@ function StickyNoteContent({ ctx }: CanvasNodeContentProps) {
                     onMouseDown={stop}
                     onPointerDown={stop}
                     onWheel={stop}
-                    style={{ flex: 1, width: "100%", resize: "none", border: "none", outline: "none", background: "transparent", color: "#1c1917", fontSize: 15, lineHeight: 1.5, fontFamily: "inherit" }}
+                    style={{ flex: 1, width: "100%", resize: "none", border: "none", outline: "none", background: "transparent", color: "#1c1917", fontSize, lineHeight: 1.45, fontFamily: "inherit" }}
                 />
             ) : (
-                <div style={{ flex: 1, whiteSpace: "pre-wrap", overflow: "hidden", color: content ? "#1c1917" : "rgba(28,25,23,.45)", fontSize: 15, lineHeight: 1.5, userSelect: "none", paddingRight: 22 }}>{content || "双击编辑便利贴"}</div>
+                <div style={{ flex: 1, whiteSpace: "pre-wrap", overflow: "hidden", color: content ? "#1c1917" : "rgba(28,25,23,.45)", fontSize, lineHeight: 1.45, userSelect: "none", paddingRight: 22 }}>{content || "双击编辑便利贴"}</div>
             )}
         </div>
     );
@@ -142,7 +145,7 @@ function StickyNoteContent({ ctx }: CanvasNodeContentProps) {
 export default definePlugin({
     id: "sticky-note",
     name: "便利贴节点",
-    version: "1.1.0",
+    version: "1.2.0",
     description: "可自选颜色、双击编辑、拖动即可移动的便利贴",
     nodes: [
         {
@@ -151,7 +154,7 @@ export default definePlugin({
             icon: "📌",
             description: "彩色便利贴",
             defaultSize: { width: 240, height: 200 },
-            defaultMetadata: { content: "", pluginColor: DEFAULT_COLOR },
+            defaultMetadata: { content: "", pluginColor: DEFAULT_COLOR, fontSize: DEFAULT_FONT_SIZE },
             minimapColor: "#f59e0b",
             // 纯记事节点:不弹出下方生成面板(默认会是「生成图片」的提示词面板)
             hidePanel: true,

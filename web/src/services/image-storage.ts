@@ -23,7 +23,7 @@ const previewUrls = new Map<string, string>();
 const previewListeners = new Set<() => void>();
 let previewRevision = 0;
 let previewQueue: Promise<unknown> = Promise.resolve();
-const IMAGE_PREVIEW_VERSION = 3;
+const IMAGE_PREVIEW_VERSION = 4;
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
 const IMAGE_REMOTE_LOAD_TIMEOUT_MS = 10 * 60_000;
 const IMAGE_DECODE_TIMEOUT_MS = 10_000;
@@ -250,6 +250,11 @@ export async function getImageBlob(storageKey: string) {
 // 缩略图按图片的 storageKey 另存一份 WebP，只放在本地 IndexedDB 里，不写进节点数据，也不参与导出和 WebDAV 同步。
 export function previewUrlFor(storageKey?: string) {
     return storageKey ? previewUrls.get(storageKey) : undefined;
+}
+
+export function imageThumbUrlFor(storageKey?: string) {
+    if (!storageKey) return undefined;
+    return previewUrls.get(storageKey) || objectUrls.get(storageKey);
 }
 
 // 缩略图在后台补，生成完成后再让用到它的界面重渲染一次。

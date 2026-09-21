@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
-import { BetweenHorizontalStart, ClipboardCopy, Copy, GalleryHorizontalEnd, GalleryHorizontal, Group, Trash2, Ungroup } from "lucide-react";
+import { BetweenHorizontalStart, Clipboard, ClipboardCopy, Copy, GalleryHorizontalEnd, GalleryHorizontal, Group, Trash2, Ungroup } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -16,12 +16,14 @@ export function CanvasNodeContextMenu({
     canUngroup,
     canUndo,
     canRedo,
+    canCopyOriginalImage,
     onClose,
     onCaptureVideoFrame,
     onUpload,
     onUndo,
     onRedo,
     onCopy,
+    onCopyOriginalImage,
     onDuplicate,
     onPaste,
     onGroup,
@@ -35,12 +37,14 @@ export function CanvasNodeContextMenu({
     canUngroup?: boolean;
     canUndo?: boolean;
     canRedo?: boolean;
+    canCopyOriginalImage?: boolean;
     onClose: () => void;
     onCaptureVideoFrame: (position: VideoFramePosition) => void;
     onUpload?: () => void;
     onUndo?: () => void;
     onRedo?: () => void;
     onCopy?: () => void;
+    onCopyOriginalImage?: () => void;
     onDuplicate: () => void;
     onPaste?: () => void;
     onGroup?: () => void;
@@ -88,6 +92,7 @@ export function CanvasNodeContextMenu({
             {menu.type === "node" && canUngroup ? <MenuButton icon={<Ungroup className="size-4" />} label={t("canvas.nodeToolbar.ungroup")} onClick={onUngroup} /> : null}
             {menu.type === "node" ? <MenuButton icon={<ClipboardCopy className="size-4" />} label={t(nodeType === CanvasNodeType.Video ? "canvas.node.copyVideo" : "canvas.node.copyImage")} onClick={onCopy} /> : null}
             {menu.type === "node" ? <MenuButton icon={<Copy className="size-4" />} label={t("canvas.node.createCopy")} onClick={onDuplicate} /> : null}
+            {menu.type === "node" && canCopyOriginalImage ? <MenuButton icon={<Clipboard className="size-4" />} label={t("canvas.node.copyToClipboard")} onClick={onCopyOriginalImage} /> : null}
             {menu.type !== "canvas" ? <MenuButton icon={<Trash2 className="size-4" />} label={t("canvas.controls.delete")} onClick={onDelete} danger /> : null}
         </div>
     );

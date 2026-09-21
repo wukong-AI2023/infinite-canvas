@@ -7,7 +7,7 @@ import { FileText, Folder, Image as ImageIcon, Music2, Video } from "lucide-reac
 import i18n from "@/i18n";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { CANVAS_REFERENCE_PATTERN, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
-import { getImagePreviewRevision, previewUrlFor, subscribeImagePreviews } from "@/services/image-storage";
+import { getImagePreviewRevision, imageThumbUrlFor, subscribeImagePreviews } from "@/services/image-storage";
 import { isImeComposing, isPlainEnterKey } from "@/lib/keyboard-event";
 import { useThemeStore } from "@/stores/use-theme-store";
 
@@ -254,7 +254,7 @@ function MentionMenu({ rect, connected, assets, activeIndex, theme, onSelectConn
 }
 
 function ReferencePreview({ reference }: { reference: CanvasResourceReference }) {
-    const preview = reference.kind === "image" ? (reference.previewUrl || previewUrlFor(reference.storageKey)) : "";
+    const preview = reference.kind === "image" ? (reference.previewUrl || imageThumbUrlFor(reference.storageKey)) : "";
     if (preview) return <img src={preview} alt="" className="size-9 rounded-md object-cover" />;
     if (reference.kind === "video" && reference.previewUrl) return <video src={reference.previewUrl} className="size-9 rounded-md object-cover" muted preload="metadata" />;
     const Icon = reference.kind === "audio" ? Music2 : reference.kind === "video" ? Video : reference.kind === "image" ? ImageIcon : FileText;
@@ -268,7 +268,7 @@ function createReferenceChip(reference: CanvasResourceReference, theme: (typeof 
     wrapper.dataset.referenceKind = reference.source === "attached" ? "asset" : "node";
     wrapper.className = "mx-px inline-flex h-7 max-w-44 items-center gap-1 overflow-hidden rounded-md border px-1 text-xs leading-none align-middle";
     Object.assign(wrapper.style, { background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.text } as CSSProperties);
-    const preview = reference.kind === "image" ? (reference.previewUrl || previewUrlFor(reference.storageKey)) : "";
+    const preview = reference.kind === "image" ? (reference.previewUrl || imageThumbUrlFor(reference.storageKey)) : "";
     if (preview) {
         const image = document.createElement("img");
         image.src = preview;
@@ -290,7 +290,7 @@ function updateReferenceChip(chip: HTMLElement, reference: CanvasResourceReferen
     const label = chip.querySelector<HTMLElement>("[data-reference-label]");
     if (label) label.textContent = reference.label;
     chip.title = reference.text || reference.title;
-    const preview = reference.kind === "image" ? (reference.previewUrl || previewUrlFor(reference.storageKey)) : "";
+    const preview = reference.kind === "image" ? (reference.previewUrl || imageThumbUrlFor(reference.storageKey)) : "";
     if (!preview) return;
     let image = chip.querySelector("img");
     if (!image) {

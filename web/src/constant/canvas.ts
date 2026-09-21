@@ -11,6 +11,9 @@ type CanvasNodeSpec = {
     metadata?: CanvasNodeMetadata;
 };
 
+export const CANVAS_MIN_ZOOM = 0.1;
+export const CANVAS_MAX_ZOOM = 5;
+
 const NODE_SHORT_SIDE = 330;
 const NODE_SQUARE = { width: NODE_SHORT_SIDE, height: NODE_SHORT_SIDE };
 const NODE_WIDE = nodeSizeFromRatio("16:9", NODE_SHORT_SIDE, NODE_SHORT_SIDE) || NODE_SQUARE;

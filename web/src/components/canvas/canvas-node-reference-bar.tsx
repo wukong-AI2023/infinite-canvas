@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
-import { getImagePreviewRevision, previewUrlFor, subscribeImagePreviews } from "@/services/image-storage";
+import { getImagePreviewRevision, imageThumbUrlFor, subscribeImagePreviews } from "@/services/image-storage";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 export function CanvasNodeReferenceBar({ nodeId, references, frameMode, onInsert, onRemove, onReorder, onStartSelection }: { nodeId: string; references: CanvasResourceReference[]; frameMode?: boolean; onInsert?: (reference: CanvasResourceReference) => void; onRemove?: (nodeId: string) => void; onReorder?: (nodeIds: string[]) => void; onStartSelection?: (nodeId: string) => void }) {
@@ -154,7 +154,7 @@ function ReferenceItem({ reference, number, dragging, popoverOpen, onClick, onRe
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
     const Icon = reference.kind === "image" ? ImageIcon : reference.kind === "video" ? Video : reference.kind === "audio" ? Music2 : FileText;
-    const thumbnail = previewUrlFor(reference.storageKey) || reference.previewUrl;
+    const thumbnail = imageThumbUrlFor(reference.storageKey) || reference.previewUrl;
     return (
         <Popover open={popoverOpen} placement="topLeft" mouseEnterDelay={0.15} content={<ReferencePreview reference={reference} />}>
             <div
@@ -180,7 +180,8 @@ function ReferenceItem({ reference, number, dragging, popoverOpen, onClick, onRe
 
 function ReferencePreview({ reference }: { reference: CanvasResourceReference }) {
     const { t } = useTranslation();
-    if (reference.kind === "image" && reference.previewUrl) return <img src={reference.previewUrl} alt={reference.title} className="max-h-52 w-72 rounded-lg object-contain" />;
+    const imagePreview = reference.kind === "image" ? (imageThumbUrlFor(reference.storageKey) || reference.previewUrl) : "";
+    if (reference.kind === "image" && imagePreview) return <img src={imagePreview} alt={reference.title} className="max-h-52 w-72 rounded-lg object-contain" />;
     if (reference.kind === "video" && reference.previewUrl) return <video src={reference.previewUrl} className="max-h-52 w-72 rounded-lg" muted controls />;
     if (reference.kind === "audio" && reference.previewUrl) return <audio src={reference.previewUrl} className="w-72" controls />;
     return <div className="max-h-52 w-72 overflow-auto whitespace-pre-wrap text-sm">{reference.text || reference.title || t("canvas.references.empty")}</div>;

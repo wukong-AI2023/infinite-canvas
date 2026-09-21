@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExtern
 import type { ReactNode } from "react";
 import { ChevronRight, CirclePlay, Copy, Download, Group, Image as ImageIcon, Music, Music2, Puzzle, RefreshCw, Star, Trash2 } from "lucide-react";
 
+import { CANVAS_MIN_ZOOM } from "@/constant/canvas";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
 import { subscribeImagePreviews, getImagePreviewRevision } from "@/services/image-storage";
@@ -228,7 +229,7 @@ export const CanvasNode = React.memo(function CanvasNode({
         (event: MouseEvent) => {
             if (!resizeRef.current.isResizing) return;
 
-            const scale = Math.max(readCanvasScale(rootRef.current), 0.25);
+            const scale = Math.max(readCanvasScale(rootRef.current), CANVAS_MIN_ZOOM);
             const dx = (event.clientX - resizeRef.current.startX) / scale;
             const dy = (event.clientY - resizeRef.current.startY) / scale;
             const minWidth = 220;
@@ -460,7 +461,7 @@ export const CanvasNode = React.memo(function CanvasNode({
             {!referenceSelectionState && !isGroup ? <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} /> : null}
             {!referenceSelectionState && (definition?.hasSourceHandle ?? true) && data.type !== CanvasNodeType.Config ? <ConnectionHandleDot side="right" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "source")} /> : null}
 
-            {showPanel && !isGroup && renderPanel ? <div className="absolute left-1/2 top-full z-[70] w-[638px] pt-4" style={{ transform: "translateX(-50%) scale(calc(1 / max(var(--canvas-k, 1), 0.25)))", transformOrigin: "top center" }}>{renderPanel(data)}</div> : null}
+            {showPanel && !isGroup && renderPanel ? <div className="absolute left-1/2 top-full z-[70] w-[638px] pt-4" style={{ transform: `translateX(-50%) scale(calc(1 / max(var(--canvas-k, 1), ${CANVAS_MIN_ZOOM})))`, transformOrigin: "top center" }}>{renderPanel(data)}</div> : null}
         </div>
     );
 });
@@ -760,6 +761,20 @@ function releasePosterSlot() {
     else posterActive = Math.max(0, posterActive - 1);
 }
 
+function VideoPlayMark({ className }: { className?: string }) {
+    return (
+        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
+            <path
+                d="M8.4 6.6v10.8c0 .95 1.08 1.5 1.92.96l8.05-5.4c.78-.52.78-1.7 0-2.22l-8.05-5.4c-.84-.54-1.92.01-1.92.96Z"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
 function VideoNodeContent({ node, theme }: NodeContentRendererProps) {
     const content = node.metadata?.content;
     const [playing, setPlaying] = useState(false);
@@ -809,7 +824,7 @@ function VideoNodeContent({ node, theme }: NodeContentRendererProps) {
                     setPlaying(true);
                 }}
             >
-                <CirclePlay className="size-12" strokeWidth={1.6} />
+                <VideoPlayMark className="size-12" />
             </button>
         </div>
     );

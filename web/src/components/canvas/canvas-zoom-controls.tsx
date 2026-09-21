@@ -5,6 +5,7 @@ import { Circle, CircleDot, Compass, Eraser, Focus, Grid2x2, Hand, HelpCircle, I
 import { useTranslation } from "react-i18next";
 
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
+import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from "@/constant/canvas";
 import { canvasThemes, isDarkTheme, type CanvasBackgroundMode, type CanvasColorTheme } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 
@@ -76,8 +77,8 @@ export function CanvasZoomControls({
                 <Tooltip title={t("canvas.zoom")}>
                     <input
                         type="range"
-                        min="25"
-                        max="500"
+                        min={Math.round(CANVAS_MIN_ZOOM * 100)}
+                        max={Math.round(CANVAS_MAX_ZOOM * 100)}
                         step="1"
                         value={Math.round(scale * 100)}
                         className="w-24"
@@ -145,6 +146,7 @@ export function CanvasZoomControls({
                     <Shortcut label={t("canvas.shortcut.drag")} value={t("canvas.shortcut.boxSelect")} />
                     <Shortcut label={`Shift / Cmd + ${t("canvas.shortcut.click")}`} value={t("canvas.shortcut.addSelection")} />
                     <Shortcut label="Ctrl / Cmd + C / V" value={t("canvas.shortcut.copyPasteNodes")} />
+                    <Shortcut label={`Alt + ${t("canvas.shortcut.drag")}`} value={t("canvas.shortcut.altDragCopy")} />
                     <Shortcut label="Ctrl / Cmd + G" value={t("canvas.shortcut.group")} />
                     <Shortcut label="Ctrl / Cmd + Shift + G" value={t("canvas.shortcut.ungroup")} />
                     <Shortcut label="Delete / Backspace" value={t("canvas.shortcut.delete")} />

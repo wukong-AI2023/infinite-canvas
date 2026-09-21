@@ -58,6 +58,10 @@ export const useCanvasSidePanelStore = create<CanvasSidePanelStore>((set, get) =
     },
     togglePanel: () => (get().panelOpen ? get().closePanel() : get().openPanel()),
     openAssetsTab: () => {
+        if (get().panelOpen && get().tab === "assets") {
+            get().closePanel();
+            return;
+        }
         get().openPanel();
         set({ tab: "assets" });
     },

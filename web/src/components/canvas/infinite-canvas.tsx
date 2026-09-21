@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from "@/constant/canvas";
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { ViewportTransform } from "@/types/canvas";
@@ -32,6 +33,21 @@ export function readCanvasScale(el: Element | null): number {
     const raw = world instanceof HTMLElement ? world.style.getPropertyValue("--canvas-k") || getComputedStyle(world).getPropertyValue("--canvas-k") : "";
     const k = Number.parseFloat(raw);
     return Number.isFinite(k) && k > 0 ? k : 1;
+}
+
+function fadeDotColor(color: string, fade: number) {
+    if (fade >= 1) return color;
+    if (fade <= 0) return "transparent";
+    const hex = /^#([0-9a-f]{6})$/i.exec(color);
+    if (hex) {
+        const n = Number.parseInt(hex[1], 16);
+        return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${fade})`;
+    }
+    const rgba = /^rgba?\(([^)]+)\)$/.exec(color);
+    if (!rgba) return color;
+    const parts = rgba[1].split(",").map((part) => part.trim());
+    const alpha = parts[3] === undefined ? fade : Number(parts[3]) * fade;
+    return `rgba(${parts[0]},${parts[1]},${parts[2]},${alpha})`;
 }
 
 export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = "lines", onViewportChange, onCanvasMouseDown, onCanvasDeselect, onCanvasDoubleClick, onContextMenu, onDrop, children }: InfiniteCanvasProps) {
@@ -82,9 +98,16 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
         const currentTheme = themeRef.current;
         const gridSize = mode === "dots" ? 16 * next.k : 48 * next.k;
         const dotSize = Math.max(0.5, next.k * 0.5);
+        const fade = mode === "dots" ? Math.min(1, Math.max(0, (next.k - CANVAS_MIN_ZOOM) / (0.5 - CANVAS_MIN_ZOOM))) : 1;
         grid.style.display = "";
         grid.style.opacity = mode === "dots" && colorThemeRef.current === "dark-gray" ? "1" : "0.4";
-        grid.style.backgroundImage = mode === "dots" ? `radial-gradient(circle, ${currentTheme.canvas.dot} ${dotSize}px, transparent ${dotSize + 0.2}px)` : `linear-gradient(${currentTheme.canvas.line} 1px, transparent 1px), linear-gradient(90deg, ${currentTheme.canvas.line} 1px, transparent 1px)`;
+        if (mode === "dots") {
+            grid.style.setProperty("--canvas-dot", fadeDotColor(currentTheme.canvas.dot, fade));
+            grid.style.setProperty("--canvas-dot-size", `${dotSize}px`);
+            grid.style.backgroundImage = "radial-gradient(circle, var(--canvas-dot) var(--canvas-dot-size), transparent calc(var(--canvas-dot-size) + 0.2px))";
+        } else {
+            grid.style.backgroundImage = `linear-gradient(${currentTheme.canvas.line} 1px, transparent 1px), linear-gradient(90deg, ${currentTheme.canvas.line} 1px, transparent 1px)`;
+        }
         grid.style.backgroundSize = `${gridSize}px ${gridSize}px`;
         grid.style.backgroundPosition = `${next.x % gridSize}px ${next.y % gridSize}px`;
     };
@@ -258,7 +281,7 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
 
             const current = liveRef.current;
             const factor = Math.pow(1.1, -event.deltaY / 100);
-            const newScale = Math.min(Math.max(current.k * factor, 0.25), 5);
+            const newScale = Math.min(Math.max(current.k * factor, CANVAS_MIN_ZOOM), CANVAS_MAX_ZOOM);
             const rect = container.getBoundingClientRect();
             const mouseX = event.clientX - rect.left;
             const mouseY = event.clientY - rect.top;

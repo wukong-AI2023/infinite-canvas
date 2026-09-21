@@ -9,9 +9,10 @@ import { requestEdit, requestGeneration, requestImageQuestion } from "@/services
 import { requestAudioGeneration, storeGeneratedAudio } from "@/services/api/audio";
 import { createVideoGenerationTask, isVideoTaskFailed, storeGeneratedVideo, waitForVideoGenerationTask } from "@/services/api/video";
 import { defaultConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
-import { ensureImagePreview, getImageBlob, previewUrlFor, setLiveCanvasUsage, uploadGeneratedImage, uploadImage } from "@/services/image-storage";
+import { ensureImagePreview, getImageBlob, imageThumbUrlFor, setLiveCanvasUsage, uploadGeneratedImage, uploadImage } from "@/services/image-storage";
 import { getMediaBlob, uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { nanoid } from "nanoid";
+import { blobToPng, imageFilesFromClipboardData, writePngToClipboard } from "@/lib/clipboard-image";
 import { formatBytes, formatDuration, getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
@@ -23,7 +24,7 @@ import { inferVideoRatio, resolveAutoVideoRatio } from "@/lib/media-size";
 import { coerceVideoQualityForModel } from "@/lib/model-script-settings";
 import { captureVideoFrame, type VideoFramePosition } from "@/lib/canvas/canvas-video-frame";
 import { App, Button, Modal } from "antd";
-import { NODE_DEFAULT_SIZE, getNodeSpec } from "@/constant/canvas";
+import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM, NODE_DEFAULT_SIZE, getNodeSpec } from "@/constant/canvas";
 import { ActiveConnectionPath, ConnectionPath, connectionIntersectsRect, connectionLayerBounds, connectionPathD } from "@/components/canvas/canvas-connections";
 import { CanvasConfigComposer } from "@/components/canvas/canvas-config-composer";
 import { CanvasConfigNodePanel } from "@/components/canvas/canvas-config-node-panel";
@@ -247,11 +248,55 @@ function cloneNodeForDuplicate(source: CanvasNodeData, id: string, position: Pos
     return { ...source, id, position, metadata };
 }
 
+function mediaCopyMetadata(source: CanvasNodeData): CanvasNodeMetadata {
+    const metadata = source.metadata;
+    const primary = metadata?.images?.find((image) => image.id === metadata.primaryImageId) || metadata?.images?.[0];
+    const content = primary?.content || metadata?.content;
+    return {
+        content,
+        storageKey: primary?.storageKey || metadata?.storageKey,
+        status: content ? "success" : metadata?.status === "error" ? "error" : "idle",
+        naturalWidth: primary?.naturalWidth || metadata?.naturalWidth,
+        naturalHeight: primary?.naturalHeight || metadata?.naturalHeight,
+        bytes: primary?.bytes || metadata?.bytes,
+        mimeType: primary?.mimeType || metadata?.mimeType,
+        durationMs: metadata?.durationMs,
+        freeResize: metadata?.freeResize,
+        ...(content ? { origin: "upload" as const } : {}),
+    };
+}
+
+function cloneNodeAsMediaCopy(source: CanvasNodeData, id: string, position: Position): CanvasNodeData {
+    if (source.type !== CanvasNodeType.Image && source.type !== CanvasNodeType.Video && source.type !== CanvasNodeType.Audio) {
+        return cloneNodeForDuplicate(source, id, position);
+    }
+    return { ...source, id, position, metadata: mediaCopyMetadata(source) };
+}
+
+function cloneNodesForAltDrag(sourceIds: Set<string>, nodes: CanvasNodeData[]) {
+    const sources = nodes.filter((node) => sourceIds.has(node.id));
+    const nextNodes = sources.map((source, index) => {
+        const id = `${source.type}-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`;
+        return cloneNodeAsMediaCopy(source, id, { ...source.position });
+    });
+    return { nodes: nextNodes, ids: new Set(nextNodes.map((node) => node.id)) };
+}
+
 function nextDuplicatePosition(source: CanvasNodeData, nodes: CanvasNodeData[]) {
     const x = source.position.x;
     let y = source.position.y + source.height + 96;
     while (nodes.some((item) => item.id !== source.id && item.position.x < x + source.width && item.position.x + item.width > x && item.position.y < y + source.height && item.position.y + item.height > y)) y += source.height + 24;
     return { x, y };
+}
+
+function nodeOriginalMedia(node?: CanvasNodeData | null) {
+    const metadata = node?.metadata;
+    const primary = metadata?.images?.find((image) => image.id === metadata.primaryImageId) || metadata?.images?.[0];
+    return {
+        content: primary?.content || metadata?.content,
+        storageKey: primary?.storageKey || metadata?.storageKey,
+        mimeType: primary?.mimeType || metadata?.mimeType,
+    };
 }
 
 async function saveCanvasOriginal(media: { content?: string; storageKey?: string; mimeType?: string } | undefined, fileName: string, kind: "image" | "video" | "audio") {
@@ -302,6 +347,7 @@ function InfiniteCanvasPage() {
     const imageInputRef = useRef<HTMLInputElement>(null);
     const uploadTargetRef = useRef<{ nodeId?: string; position?: Position } | null>(null);
     const clipboardRef = useRef<CanvasClipboard | null>(null);
+    const ignoreNextPasteRef = useRef(false);
     const historyRef = useRef<{ past: CanvasHistoryEntry[]; future: CanvasHistoryEntry[] }>({ past: [], future: [] });
     const lastHistoryRef = useRef<CanvasHistoryEntry | null>(null);
     const historyCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -321,6 +367,8 @@ function InfiniteCanvasPage() {
         dy: number;
         initialSelectedNodes: Map<string, { x: number; y: number }>;
         movedIds: Set<string>;
+        altDuplicate: boolean;
+        didDuplicate: boolean;
     }>({
         isDraggingNode: false,
         hasMoved: false,
@@ -330,6 +378,8 @@ function InfiniteCanvasPage() {
         dy: 0,
         initialSelectedNodes: new Map(),
         movedIds: new Set(),
+        altDuplicate: false,
+        didDuplicate: false,
     });
     const nodeDragVisualsRef = useRef<NodeDragVisuals | null>(null);
     const viewportLiveTimerRef = useRef<number | null>(null);
@@ -585,7 +635,7 @@ function InfiniteCanvasPage() {
             setActiveChatId(project.activeChatId || null);
             setBackgroundMode(project.backgroundMode);
             setShowImageInfo(project.showImageInfo || false);
-            const restoredViewport = { ...project.viewport, k: Math.max(project.viewport.k, 0.25) };
+            const restoredViewport = { ...project.viewport, k: Math.max(project.viewport.k, CANVAS_MIN_ZOOM) };
             viewportRef.current = restoredViewport;
             setViewport(restoredViewport);
             historyRef.current = { past: [], future: [] };
@@ -869,7 +919,7 @@ function InfiniteCanvasPage() {
     const getConnectionDropTarget = useCallback(
         (clientX: number, clientY: number, current: ConnectionHandle): ConnectionDropTarget => {
             const world = screenToCanvas(clientX, clientY);
-            const scale = Math.max(viewportRef.current.k, 0.25);
+            const scale = Math.max(viewportRef.current.k, CANVAS_MIN_ZOOM);
             const padding = CONNECTION_NODE_HIT_PADDING / scale;
             const handleRadius = CONNECTION_HANDLE_HIT_RADIUS / scale;
             let isNearNode = false;
@@ -956,6 +1006,7 @@ function InfiniteCanvasPage() {
     const superResolveNode = superResolveNodeId ? nodeById.get(superResolveNodeId) || null : null;
     const angleNode = angleNodeId ? nodeById.get(angleNodeId) || null : null;
     const contextMenuNode = contextMenu?.type === "node" ? nodeById.get(contextMenu.nodeId) || null : null;
+    const contextMenuOriginalMedia = nodeOriginalMedia(contextMenuNode);
     const previewNode = previewNodeId ? nodeById.get(previewNodeId) || null : null;
     const previewImage = previewImageId ? previewNode?.metadata?.images?.find((image) => image.id === previewImageId) : undefined;
     const previewContent = previewImageId ? previewImage?.content : previewNode?.metadata?.content;
@@ -1200,7 +1251,7 @@ function InfiniteCanvasPage() {
             label: asset.title,
             title: asset.title,
             storageKey: asset.data.storageKey,
-            previewUrl: previewUrlFor(asset.data.storageKey),
+            previewUrl: imageThumbUrlFor(asset.data.storageKey),
             width: asset.data.width,
             height: asset.data.height,
             active: true,
@@ -1303,17 +1354,13 @@ function InfiniteCanvasPage() {
 
         const copiedNodes = nodesRef.current
             .filter((node) => selectedIds.has(node.id))
-            .map((node) => ({
-                ...node,
-                position: { ...node.position },
-                metadata: node.metadata ? { ...node.metadata } : undefined,
-            }));
+            .map((node) => cloneNodeAsMediaCopy(node, node.id, { ...node.position }));
 
         if (!copiedNodes.length) return;
 
         clipboardRef.current = {
             nodes: copiedNodes,
-            connections: connectionsRef.current.filter((connection) => selectedIds.has(connection.fromNodeId) && selectedIds.has(connection.toNodeId)).map((connection) => ({ ...connection })),
+            connections: [],
         };
     }, []);
 
@@ -1396,7 +1443,7 @@ function InfiniteCanvasPage() {
             if (!node) return;
             const worldX = node.position.x + node.width / 2;
             const worldY = node.position.y + node.height / 2;
-            const k = Math.min(Math.max(Math.min((size.width * 0.6) / node.width, (size.height * 0.6) / node.height), 0.25), 1);
+            const k = Math.min(Math.max(Math.min((size.width * 0.6) / node.width, (size.height * 0.6) / node.height), CANVAS_MIN_ZOOM), 1);
             const target = { x: size.width / 2 - worldX * k, y: size.height / 2 - worldY * k, k };
             setSelectedNodeIds(new Set([nodeId]));
             setSelectedConnectionIds(new Set());
@@ -1425,7 +1472,7 @@ function InfiniteCanvasPage() {
 
     const setZoomScale = useCallback(
         (scale: number) => {
-            const nextScale = Math.min(Math.max(scale, 0.25), 5);
+            const nextScale = Math.min(Math.max(scale, CANVAS_MIN_ZOOM), CANVAS_MAX_ZOOM);
             const prev = viewportRef.current;
             commitViewport({
                 x: size.width / 2 - ((size.width / 2 - prev.x) / prev.k) * nextScale,
@@ -1565,6 +1612,7 @@ function InfiniteCanvasPage() {
 
     const handleNodeMouseDown = useCallback((event: ReactMouseEvent, nodeId: string) => {
         event.stopPropagation();
+        if (event.altKey) event.preventDefault();
         // Capture already selected the node; this only starts dragging, with a fallback selection if capture did not run.
         const currentNodes = nodesRef.current;
         const nextSelected = pendingSelectionRef.current ?? selectNodeByEvent(event, nodeId).nextSelected;
@@ -1588,6 +1636,8 @@ function InfiniteCanvasPage() {
             dy: 0,
             initialSelectedNodes,
             movedIds: new Set(initialSelectedNodes.keys()),
+            altDuplicate: event.altKey,
+            didDuplicate: false,
         };
         historyPausedRef.current = true;
         nodeDraggingRef.current = true;
@@ -1636,6 +1686,8 @@ function InfiniteCanvasPage() {
         dragRef.current.dy = 0;
         dragRef.current.initialSelectedNodes = new Map();
         dragRef.current.movedIds = new Set();
+        dragRef.current.altDuplicate = false;
+        dragRef.current.didDuplicate = false;
         nodeDragVisualsRef.current = null;
         if (wasClick && clickedNodeId) {
             const clickedNode = nodesRef.current.find((node) => node.id === clickedNodeId);
@@ -1661,6 +1713,19 @@ function InfiniteCanvasPage() {
                 const initialPositions = dragRef.current.initialSelectedNodes;
                 const movedIds = dragRef.current.movedIds;
                 if (Math.abs(event.clientX - dragRef.current.startX) > 3 || Math.abs(event.clientY - dragRef.current.startY) > 3) {
+                    if (!dragRef.current.hasMoved && dragRef.current.altDuplicate && !dragRef.current.didDuplicate) {
+                        const sourceIds = new Set(dragRef.current.initialSelectedNodes.keys());
+                        const cloned = cloneNodesForAltDrag(sourceIds, nodesRef.current);
+                        applyNodeDragVisuals(nodeDragVisualsRef.current, 0);
+                        nodeDragVisualsRef.current = null;
+                        dragRef.current.didDuplicate = true;
+                        dragRef.current.initialSelectedNodes = new Map(cloned.nodes.map((node) => [node.id, { x: node.position.x, y: node.position.y }]));
+                        dragRef.current.movedIds = cloned.ids;
+                        nodesRef.current = [...nodesRef.current, ...cloned.nodes];
+                        setNodes((prev) => [...prev, ...cloned.nodes]);
+                        setSelectedNodeIds(cloned.ids);
+                        setSelectedConnectionIds(new Set());
+                    }
                     dragRef.current.hasMoved = true;
                 }
                 dragRef.current.dx = dx;
@@ -1885,24 +1950,74 @@ function InfiniteCanvasPage() {
         [getCanvasCenter, t],
     );
 
-    const pasteSystemClipboard = useCallback(async () => {
-        if (!navigator.clipboard) return;
-
-        const items = await navigator.clipboard.read();
-        const imageItem = items.find((item) => item.types.some((type) => type.startsWith("image/")));
-        if (imageItem) {
-            const imageType = imageItem.types.find((type) => type.startsWith("image/"));
-            if (!imageType) return;
-            const blob = await imageItem.getType(imageType);
-            const file = new File([blob], "clipboard-image.png", { type: imageType });
-            void createImageFileNode(file, getCanvasCenter());
+    const pasteImageFiles = useCallback(
+        (files: File[]) => {
+            if (!files.length) return false;
+            const center = getCanvasCenter();
+            files.forEach((file, index) => {
+                void createImageFileNode(file, { x: center.x + index * 40, y: center.y + index * 40 });
+            });
             message.success(t("canvas.projectPage.clipboardImageAdded"));
+            return true;
+        },
+        [createImageFileNode, getCanvasCenter, message, t],
+    );
+
+    const pasteSystemClipboard = useCallback(async () => {
+        try {
+            if (navigator.clipboard?.read) {
+                const items = await navigator.clipboard.read();
+                const files: File[] = [];
+                for (const item of items) {
+                    const imageType = item.types.find((type) => type.startsWith("image/"));
+                    if (!imageType) continue;
+                    const blob = await item.getType(imageType);
+                    files.push(new File([blob], `clipboard-image-${files.length + 1}.png`, { type: imageType }));
+                }
+                if (pasteImageFiles(files)) return;
+            }
+        } catch {
+            message.info(t("canvas.projectPage.clipboardUnavailable"));
             return;
         }
 
-        const text = await navigator.clipboard.readText();
-        if (createTextNodeFromClipboard(text)) message.success(t("canvas.projectPage.clipboardTextAdded"));
-    }, [createImageFileNode, createTextNodeFromClipboard, getCanvasCenter, message, t]);
+        try {
+            const text = navigator.clipboard?.readText ? await navigator.clipboard.readText() : "";
+            if (createTextNodeFromClipboard(text)) message.success(t("canvas.projectPage.clipboardTextAdded"));
+        } catch {
+            message.info(t("canvas.projectPage.clipboardUnavailable"));
+        }
+    }, [createTextNodeFromClipboard, message, pasteImageFiles, t]);
+
+    const copyImageToSystemClipboard = useCallback(
+        async (node: CanvasNodeData) => {
+            const media = nodeOriginalMedia(node);
+            if (!media.storageKey && !media.content) {
+                message.error(t("canvas.projectPage.noImageToCopy"));
+                return;
+            }
+            const pngPromise = (async () => {
+                let blob = media.storageKey ? await getImageBlob(media.storageKey) : null;
+                if (!blob && media.content) {
+                    try {
+                        blob = await (await fetch(media.content)).blob();
+                    } catch {
+                        blob = null;
+                    }
+                }
+                if (!blob) throw new Error("missing");
+                return blobToPng(blob);
+            })();
+            try {
+                await writePngToClipboard(pngPromise);
+                clipboardRef.current = null;
+                message.success(t("canvas.projectPage.imageCopied"));
+            } catch {
+                message.error(t("canvas.projectPage.copyImageFailed"));
+            }
+        },
+        [message, t],
+    );
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -1958,8 +2073,14 @@ function InfiniteCanvasPage() {
             }
 
             if (isModifierShortcut && !event.altKey && key === "v") {
-                event.preventDefault();
-                if (!pasteCopiedNodes()) void pasteSystemClipboard();
+                if (clipboardRef.current?.nodes.length) {
+                    event.preventDefault();
+                    ignoreNextPasteRef.current = true;
+                    pasteCopiedNodes();
+                    window.setTimeout(() => {
+                        ignoreNextPasteRef.current = false;
+                    }, 0);
+                }
                 return;
             }
 
@@ -1989,7 +2110,31 @@ function InfiniteCanvasPage() {
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [copySelectedNodes, deleteConnections, deleteNodes, groupSelection, pasteCopiedNodes, pasteSystemClipboard, redoCanvas, setConnecting, undoCanvas, ungroupSelection]);
+    }, [copySelectedNodes, deleteConnections, deleteNodes, groupSelection, pasteCopiedNodes, redoCanvas, setConnecting, undoCanvas, ungroupSelection]);
+
+    useEffect(() => {
+        const handlePaste = (event: ClipboardEvent) => {
+            if (ignoreNextPasteRef.current) return;
+            const target = event.target instanceof Element ? event.target : null;
+            if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement || isCanvasTextContextTarget(event.target) || target?.closest("[data-canvas-no-zoom],[data-canvas-shortcuts-ignore],.ant-modal,.ant-popover,.ant-dropdown")) return;
+
+            const files = imageFilesFromClipboardData(event.clipboardData);
+            if (files.length) {
+                event.preventDefault();
+                pasteImageFiles(files);
+                return;
+            }
+
+            const text = event.clipboardData?.getData("text/plain") || "";
+            if (createTextNodeFromClipboard(text)) {
+                event.preventDefault();
+                message.success(t("canvas.projectPage.clipboardTextAdded"));
+            }
+        };
+
+        window.addEventListener("paste", handlePaste);
+        return () => window.removeEventListener("paste", handlePaste);
+    }, [createTextNodeFromClipboard, message, pasteImageFiles, t]);
 
     const handleConnectStart = useCallback(
         (event: ReactMouseEvent, nodeId: string, handleType: "source" | "target") => {
@@ -3670,8 +3815,14 @@ function InfiniteCanvasPage() {
                     onKeep={keepNodeToolbar}
                     onLeave={hideNodeToolbar}
                     onInfo={(node) => setInfoNodeId(node.id)}
-                    onDecreaseFont={(node) => handleFontSizeChange(node.id, Math.max(10, (node.metadata?.fontSize || 14) - 2))}
-                    onIncreaseFont={(node) => handleFontSizeChange(node.id, Math.min(32, (node.metadata?.fontSize || 14) + 2))}
+                    onDecreaseFont={(node) => {
+                        const current = node.metadata?.fontSize || Number(node.metadata?.pluginFontSize) || (node.type === CanvasNodeType.Text ? 14 : 15);
+                        handleFontSizeChange(node.id, Math.max(10, current - 2));
+                    }}
+                    onIncreaseFont={(node) => {
+                        const current = node.metadata?.fontSize || Number(node.metadata?.pluginFontSize) || (node.type === CanvasNodeType.Text ? 14 : 15);
+                        handleFontSizeChange(node.id, Math.min(32, current + 2));
+                    }}
                     onToggleDialog={(node) => {
                         if (isUploadedMediaNode(node)) {
                             setDialogNodeId(null);
@@ -3751,6 +3902,7 @@ function InfiniteCanvasPage() {
                         canUngroup={contextMenu.type === "node" && canUngroupSelection}
                         canUndo={historyState.canUndo}
                         canRedo={historyState.canRedo}
+                        canCopyOriginalImage={contextMenuNode?.type === CanvasNodeType.Image && Boolean(contextMenuOriginalMedia.storageKey || contextMenuOriginalMedia.content)}
                         onClose={() => setContextMenu(null)}
                         onCaptureVideoFrame={(position) => {
                             if (contextMenu.type !== "node") return;
@@ -3771,6 +3923,11 @@ function InfiniteCanvasPage() {
                         onCopy={() => {
                             if (contextMenu.type !== "node") return;
                             copySelectedNodes();
+                            setContextMenu(null);
+                        }}
+                        onCopyOriginalImage={() => {
+                            if (contextMenu.type !== "node" || !contextMenuNode) return;
+                            void copyImageToSystemClipboard(contextMenuNode);
                             setContextMenu(null);
                         }}
                         onDuplicate={() => {

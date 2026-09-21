@@ -161,6 +161,7 @@ export function CanvasTopBar({
                     <Shortcut keys={["Shift / Cmd", t("canvas.shortcut.click")]} value={t("canvas.shortcut.addSelection")} />
                     <Shortcut keys={["Ctrl / Cmd", "A"]} value={t("canvas.shortcut.selectAll")} />
                     <Shortcut keys={["Ctrl / Cmd", "C / V"]} value={t("canvas.shortcut.copyPaste")} />
+                    <Shortcut keys={["Alt", t("canvas.shortcut.drag")]} value={t("canvas.shortcut.altDragCopy")} />
                     <Shortcut keys={["Ctrl / Cmd", "G"]} value={t("canvas.shortcut.group")} />
                     <Shortcut keys={["Ctrl / Cmd", "Shift", "G"]} value={t("canvas.shortcut.ungroup")} />
                     <Shortcut keys={["Ctrl / Cmd", "Z"]} value={t("canvas.undo")} />

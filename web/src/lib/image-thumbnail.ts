@@ -9,11 +9,6 @@ export function getThumbnailDimensions(width: number, height: number, maxEdge = 
 export async function createImageThumbnail(blob: Blob, maxEdge = CANVAS_IMAGE_PREVIEW_MAX_EDGE) {
     const bitmap = await createImageBitmap(blob);
     const { width, height } = getThumbnailDimensions(bitmap.width, bitmap.height, maxEdge);
-    if (width === bitmap.width && height === bitmap.height) {
-        bitmap.close();
-        return undefined;
-    }
-
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;

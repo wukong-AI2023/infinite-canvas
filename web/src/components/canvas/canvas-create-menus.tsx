@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { ImageIcon, List, Music2, Settings2, Video, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { CANVAS_MIN_ZOOM } from "@/constant/canvas";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { listNodeDefinitions, useNodeRegistryVersion } from "@/lib/canvas/node-registry";
@@ -29,7 +30,7 @@ export function ConnectionCreateMenu({
         <div
             className="absolute z-[120] w-[300px] rounded-[16px] border p-3 shadow-2xl backdrop-blur"
             data-connection-create-menu
-            style={{ left: pending.position.x, top: pending.position.y, transform: `scale(${0.9 / Math.max(scale, 0.25)})`, transformOrigin: "top left", background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+            style={{ left: pending.position.x, top: pending.position.y, transform: `scale(${0.9 / Math.max(scale, CANVAS_MIN_ZOOM)})`, transformOrigin: "top left", background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
         >
@@ -96,7 +97,7 @@ export function NodeCreateMenu({ position, scale, centeredInViewport = false, on
             ref={menuRef}
             className="pointer-events-auto absolute z-[120] max-h-[70vh] w-[253.333333px] overflow-y-auto rounded-[16px] border p-3 shadow-2xl backdrop-blur thin-scrollbar"
             data-canvas-no-zoom
-            style={{ left: position.x, top: centeredInViewport ? "50%" : position.y, transform: centeredInViewport ? `translateY(-50%) scale(${0.9 / Math.max(scale, 0.25)})` : `scale(${0.9 / Math.max(scale, 0.25)})`, transformOrigin: centeredInViewport ? "left center" : "top left", background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+            style={{ left: position.x, top: centeredInViewport ? "50%" : position.y, transform: centeredInViewport ? `translateY(-50%) scale(${0.9 / Math.max(scale, CANVAS_MIN_ZOOM)})` : `scale(${0.9 / Math.max(scale, CANVAS_MIN_ZOOM)})`, transformOrigin: centeredInViewport ? "left center" : "top left", background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
             onPointerDown={(event) => event.stopPropagation()}
